@@ -89,11 +89,15 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     }
 
     if (debug_detection_overlay_enabled_.load()) {
-      det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>("debug/detection_overlay", 1);
+      const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+      det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
+        "debug/detection_overlay", debug_image_qos);
     }
     if (debug_refine_grasped_roi_input_enabled_.load()) {
+      const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
       refine_grasped_roi_input_pub_ =
-        create_publisher<sensor_msgs::msg::Image>("debug/refine_grasped_roi_input", 1);
+        create_publisher<sensor_msgs::msg::Image>(
+        "debug/refine_grasped_roi_input", debug_image_qos);
     }
     camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
       refine_grasped_camera_info_topic_,
