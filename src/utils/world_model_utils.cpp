@@ -13,6 +13,20 @@ namespace cbp::world_model
 using concrete_block_world_model_interfaces::msg::Block;
 using concrete_block_world_model_interfaces::msg::PlanningSceneObject;
 
+namespace
+{
+
+builtin_interfaces::msg::Duration markerLifetime(double seconds)
+{
+  builtin_interfaces::msg::Duration lifetime;
+  lifetime.sec = static_cast<int32_t>(seconds);
+  lifetime.nanosec =
+    static_cast<uint32_t>((seconds - static_cast<double>(lifetime.sec)) * 1'000'000'000.0);
+  return lifetime;
+}
+
+}  // namespace
+
 std::string normalizeMode(std::string mode)
 {
   std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {
@@ -125,10 +139,14 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
 
   visualization_msgs::msg::Marker clear;
   clear.header = marker_header;
+  clear.ns = "";
+  clear.id = 0;
+  clear.type = visualization_msgs::msg::Marker::CUBE;
   clear.action = visualization_msgs::msg::Marker::DELETEALL;
   ma.markers.push_back(clear);
 
   int marker_id = 1;
+  const auto dynamic_marker_lifetime = markerLifetime(2.0);
   for (const auto & object : static_objects) {
     visualization_msgs::msg::Marker marker;
     marker.header = marker_header;
@@ -172,6 +190,7 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
       visualization_msgs::msg::Marker::SPHERE :
       visualization_msgs::msg::Marker::CUBE;
     m.action = visualization_msgs::msg::Marker::ADD;
+    m.lifetime = dynamic_marker_lifetime;
     m.pose = b.pose;
     m.scale.x = block_dimensions_m[0];
     m.scale.y = block_dimensions_m[1];
@@ -209,6 +228,7 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
     label.id = marker_id++;
     label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
     label.action = visualization_msgs::msg::Marker::ADD;
+    label.lifetime = dynamic_marker_lifetime;
     label.pose = b.pose;
     label.pose.position.z += 0.7;
     label.scale.z = 0.2;
@@ -258,6 +278,7 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
         arrow.id = marker_id++;
         arrow.type = visualization_msgs::msg::Marker::ARROW;
         arrow.action = visualization_msgs::msg::Marker::ADD;
+        arrow.lifetime = dynamic_marker_lifetime;
         arrow.scale.x = 0.025;   // shaft diameter
         arrow.scale.y = 0.05;    // head diameter
         arrow.scale.z = 0.0;

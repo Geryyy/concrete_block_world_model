@@ -28,7 +28,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "perception_mode",
                 default_value="IDLE",
-                description="Deprecated; ignored.",
+                description="World-model perception mode: IDLE or CONTINUOUS.",
             ),
             DeclareLaunchArgument(
                 "params_file",
@@ -42,6 +42,7 @@ def generate_launch_description():
                     LaunchConfiguration("params_file"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "perception_mode": LaunchConfiguration("perception_mode"),
                     },
                 ],
                 remappings=[
@@ -50,10 +51,21 @@ def generate_launch_description():
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
+                    ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
+                    ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),
                     ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
+                    ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
+                    ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
+                    ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
+                    ("timing/continuous_registration_ms", "/cbp/timing/continuous_registration_ms"),
+                    ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
+                    ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
+                    ("timing/continuous_detections", "/cbp/timing/continuous_detections"),
+                    ("timing/continuous_accepted", "/cbp/timing/continuous_accepted"),
+                    ("timing/continuous_rejected", "/cbp/timing/continuous_rejected"),
                 ],
                 additional_env={
                     "RCUTILS_COLORIZED_OUTPUT": "1",

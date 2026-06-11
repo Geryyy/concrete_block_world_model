@@ -328,7 +328,7 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   WorldModelConfig cfg;
 
   (void)node.declare_parameter<std::string>("pipeline_mode", "full");
-  (void)node.declare_parameter<std::string>("perception_mode", "IDLE");
+  cfg.perception_mode = node.declare_parameter<std::string>("perception_mode", "IDLE");
   cfg.min_fitness = node.declare_parameter<double>("min_fitness", 0.3);
   cfg.max_rmse = node.declare_parameter<double>("max_rmse", 0.05);
   cfg.object_class = node.declare_parameter<std::string>("object_class", "concrete_block");
@@ -343,8 +343,50 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.min_update_confidence = node.declare_parameter<double>(
     "world_model.min_update_confidence",
     0.25);
+  cfg.protect_task_blocks_from_timeout = node.declare_parameter<bool>(
+    "world_model.protect_task_blocks_from_timeout",
+    true);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
+  cfg.continuous_process_every_n_frames = node.declare_parameter<int>(
+    "continuous.process_every_n_frames",
+    3);
+  cfg.continuous_segmentation_timeout_s = node.declare_parameter<double>(
+    "continuous.segmentation_timeout_s",
+    1.0);
+  cfg.continuous_cutout_timeout_s = node.declare_parameter<double>(
+    "continuous.cutout_timeout_s",
+    1.0);
+  cfg.continuous_min_mask_pixels = node.declare_parameter<int>(
+    "continuous.quality.min_mask_pixels",
+    2000);
+  cfg.continuous_min_mask_fill_ratio = node.declare_parameter<double>(
+    "continuous.quality.min_mask_fill_ratio",
+    0.15);
+  cfg.continuous_min_valid_cloud_points = node.declare_parameter<int>(
+    "continuous.quality.min_valid_cloud_points",
+    120);
+  cfg.continuous_mask_merge_enabled = node.declare_parameter<bool>(
+    "continuous.mask_merge.enabled",
+    true);
+  cfg.continuous_mask_merge_max_centroid_distance_m = node.declare_parameter<double>(
+    "continuous.mask_merge.max_centroid_distance_m",
+    0.6);
+  cfg.continuous_registration_enabled = node.declare_parameter<bool>(
+    "continuous.registration.enabled",
+    false);
+  cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
+    "continuous.registration.timeout_s",
+    3.0);
+  cfg.continuous_registration_max_per_frame = node.declare_parameter<int>(
+    "continuous.registration.max_per_frame",
+    1);
+  cfg.continuous_association_max_distance_m = node.declare_parameter<double>(
+    "continuous.association.max_distance_m",
+    0.8);
+  cfg.continuous_association_max_age_s = node.declare_parameter<double>(
+    "continuous.association.max_age_s",
+    20.0);
   cfg.scene_discovery_coarse_fallback_enabled =
     node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
   cfg.scene_discovery_coarse_fallback_min_points =
@@ -460,6 +502,34 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
 
   clamp_min(cfg.min_fitness, 0.0, "min_fitness");
   clamp_min(cfg.max_rmse, 0.0, "max_rmse");
+  clamp_min(cfg.object_timeout_s, 0.1, "world_model.object_timeout_s");
+  clamp_min(cfg.association_max_distance_m, 0.01, "world_model.association_max_distance_m");
+  clamp_min(cfg.association_max_age_s, 0.1, "world_model.association_max_age_s");
+  clamp_min(cfg.min_update_confidence, 0.0, "world_model.min_update_confidence");
+  clamp_min(cfg.refine_target_max_distance_m, 0.01, "world_model.refine_target_max_distance_m");
+  clamp_min_i(cfg.continuous_process_every_n_frames, 1, "continuous.process_every_n_frames");
+  clamp_min(cfg.continuous_segmentation_timeout_s, 0.01, "continuous.segmentation_timeout_s");
+  clamp_min(cfg.continuous_cutout_timeout_s, 0.01, "continuous.cutout_timeout_s");
+  clamp_min_i(cfg.continuous_min_mask_pixels, 0, "continuous.quality.min_mask_pixels");
+  clamp_min_i(
+    cfg.continuous_min_valid_cloud_points, 0, "continuous.quality.min_valid_cloud_points");
+  clamp_min(
+    cfg.continuous_mask_merge_max_centroid_distance_m,
+    0.0,
+    "continuous.mask_merge.max_centroid_distance_m");
+  clamp_min(cfg.continuous_registration_timeout_s, 0.01, "continuous.registration.timeout_s");
+  clamp_min_i(cfg.continuous_registration_max_per_frame, 1, "continuous.registration.max_per_frame");
+  clamp_min(
+    cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
+  clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
+  if (cfg.continuous_min_mask_fill_ratio < 0.0 || cfg.continuous_min_mask_fill_ratio > 1.0) {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.quality.min_mask_fill_ratio=%.3f, clamping to [0, 1]",
+      cfg.continuous_min_mask_fill_ratio);
+    cfg.continuous_min_mask_fill_ratio =
+      std::clamp(cfg.continuous_min_mask_fill_ratio, 0.0, 1.0);
+  }
   clamp_min_i(
     cfg.scene_discovery_coarse_fallback_min_points, 1,
     "scene_discovery_coarse_fallback.min_points");
