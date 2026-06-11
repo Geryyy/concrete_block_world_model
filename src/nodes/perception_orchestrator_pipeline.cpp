@@ -1,7 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
 #include "concrete_block_world_model/utils/img_utils.hpp"
-#include "concrete_block_world_model/utils/visu_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
 

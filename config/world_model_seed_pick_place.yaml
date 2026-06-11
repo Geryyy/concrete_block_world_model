@@ -1,39 +1,40 @@
 # Two blocks for pick-and-place testing.
-# Positions in K0_mounting_base frame (planning reference frame).
+# Positions in the world frame (stack-wide planning reference frame).
 # Block dimensions: 0.9 x 0.6 x 0.6 m (X=depth, Y, Z=height).
 #
 # Positions chosen to lie on flat terrain in the seibersdorf_environment.
 # Flat-terrain scan (terrain z sampled from mesh):
-#   block_1: K0=(4.5, 0.25)  → world=(-11.439, 0.100)  terrain_z=-0.119 m
-#   block_2: K0=(6.0, 0.25)  → world=(-12.939, 0.100)  terrain_z=-0.104 m
+#   block_1: world=(-11.439, 0.100)  terrain_z=-0.119 m
+#   block_2: world=(-12.939, 0.100)  terrain_z=-0.104 m
 #
 # block z calculation:
 #   z_world_block_center = terrain_z + 0.3 (half block height)
-#   z_K0 = z_world - 1.141  (T_world_K0 z-offset)
-#   → block_1 z_K0 = -0.119 + 0.3 - 1.141 = -0.960
-#   → block_2 z_K0 = -0.104 + 0.3 - 1.141 = -0.945
+#   → block_1 z_world = -0.119 + 0.3 = 0.181
+#   → block_2 z_world = -0.104 + 0.3 = 0.196
+#
+# Reference: T_world_K0: translation=[-6.939, 0.350, 1.141], yaw=180 deg
+#   (tf2_echo world K0_mounting_base). K0 conversion is now done downstream at
+#   the motion-planning boundary, not here.
 #
 # Gazebo world poses (spawn z raised +0.3 m so blocks fall onto terrain):
-#   T_world_K0: translation=[-6.939, 0.350, 1.141], yaw=180 deg (tf2_echo world K0_mounting_base)
-#   x_gz = -x_K0 - 6.939,  y_gz = -y_K0 + 0.350,  z_gz = terrain_z + 0.6
-#   yaw_gz = yaw_K0 + 180 deg
+#   z_gz = terrain_z + 0.6
 world_model_node:
   ros__parameters:
-    world_frame: K0_mounting_base
+    world_frame: world
     world_model:
       initial_blocks: |
         - id: block_1
-          frame_id: K0_mounting_base
-          position: [4.5, 0.25, -0.960]
-          yaw_deg: 0.0
+          frame_id: world
+          position: [-11.439, 0.100, 0.181]
+          yaw_deg: 180.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
           gazebo_pose: [-11.439, 0.100, 0.481, 0.0, 0.0, 180.0]
         - id: block_2
-          frame_id: K0_mounting_base
-          position: [6.0, 0.25, -0.945]
-          yaw_deg: 0.0
+          frame_id: world
+          position: [-12.939, 0.100, 0.196]
+          yaw_deg: 180.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
