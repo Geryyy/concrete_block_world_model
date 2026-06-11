@@ -121,6 +121,9 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_valid_cloud_points{120};
     bool mask_merge_enabled{true};
     double mask_merge_max_centroid_distance_m{0.6};
+    bool registration_enabled{false};
+    double registration_timeout_s{3.0};
+    int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
     double association_max_age_s{20.0};
   };
@@ -306,6 +309,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_seg_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_cutout_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_coarse_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_registration_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_upsert_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_total_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_detections_pub_;

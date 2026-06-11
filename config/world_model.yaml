@@ -80,6 +80,12 @@ world_model_node:
       mask_merge:
         enabled: true
         max_centroid_distance_m: 0.6
+      registration:
+        # Try full global + local registration on merged masks after coarse clustering.
+        # If registration fails, continuous mode still falls back to the coarse pose.
+        enabled: true
+        timeout_s: 3.0
+        max_per_frame: 1
       association:
         # Coarse centroids can jump more than precise ICP poses when masks are partial.
         max_distance_m: 0.8

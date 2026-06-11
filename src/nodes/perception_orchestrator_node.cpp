@@ -33,6 +33,9 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     continuous_cfg_.mask_merge_enabled = startup.continuous_mask_merge_enabled;
     continuous_cfg_.mask_merge_max_centroid_distance_m =
       startup.continuous_mask_merge_max_centroid_distance_m;
+    continuous_cfg_.registration_enabled = startup.continuous_registration_enabled;
+    continuous_cfg_.registration_timeout_s = startup.continuous_registration_timeout_s;
+    continuous_cfg_.registration_max_per_frame = startup.continuous_registration_max_per_frame;
     continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
     continuous_cfg_.association_max_age_s = startup.continuous_association_max_age_s;
     perception_mode_.store(
@@ -188,6 +191,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       create_publisher<std_msgs::msg::Float64>("timing/continuous_cutout_ms", 10);
     continuous_timing_coarse_ms_pub_ =
       create_publisher<std_msgs::msg::Float64>("timing/continuous_coarse_ms", 10);
+    continuous_timing_registration_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_registration_ms", 10);
     continuous_timing_upsert_ms_pub_ =
       create_publisher<std_msgs::msg::Float64>("timing/continuous_upsert_ms", 10);
     continuous_timing_total_ms_pub_ =
@@ -290,7 +295,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm] continuous_registration[enabled=%s timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       continuous_cfg_.process_every_n_frames,
@@ -301,6 +306,9 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       continuous_cfg_.min_valid_cloud_points,
       continuous_cfg_.mask_merge_enabled ? "true" : "false",
       continuous_cfg_.mask_merge_max_centroid_distance_m,
+      continuous_cfg_.registration_enabled ? "true" : "false",
+      continuous_cfg_.registration_timeout_s,
+      continuous_cfg_.registration_max_per_frame,
       continuous_cfg_.association_max_distance_m,
       continuous_cfg_.association_max_age_s);
     if (refine_grasped_use_fk_roi_) {

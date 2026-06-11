@@ -568,6 +568,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           double seg_ms,
           double cutout_ms,
           double coarse_ms,
+          double registration_ms,
           double upsert_ms,
           double total_ms,
           double detections,
@@ -576,6 +577,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           publishTimingScalar(continuous_timing_seg_ms_pub_, seg_ms);
           publishTimingScalar(continuous_timing_cutout_ms_pub_, cutout_ms);
           publishTimingScalar(continuous_timing_coarse_ms_pub_, coarse_ms);
+          publishTimingScalar(continuous_timing_registration_ms_pub_, registration_ms);
           publishTimingScalar(continuous_timing_upsert_ms_pub_, upsert_ms);
           publishTimingScalar(continuous_timing_total_ms_pub_, total_ms);
           publishTimingScalar(continuous_timing_detections_pub_, detections);
@@ -614,8 +616,8 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           std::chrono::duration_cast<std::chrono::milliseconds>(t_after_seg - t_start).count();
         recordTiming(seg_ms, 0, 0, seg_ms);
         publish_continuous_timing(
-          static_cast<double>(seg_ms), 0.0, 0.0, 0.0, static_cast<double>(seg_ms), 0.0, 0.0,
-          0.0);
+          static_cast<double>(seg_ms), 0.0, 0.0, 0.0, 0.0, static_cast<double>(seg_ms), 0.0,
+          0.0, 0.0);
         resetBusy();
         return;
       }
@@ -649,7 +651,9 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       size_t rejected_count = 0;
       int64_t cutout_sum_ms = 0;
       int64_t coarse_sum_ms = 0;
+      int64_t registration_sum_ms = 0;
       int64_t upsert_sum_ms = 0;
+      int continuous_registration_attempts = 0;
       std::vector<ContinuousMaskCandidate> candidates;
       for (size_t i = 0; i < seg_res->detections.detections.size(); ++i) {
         const auto & det = seg_res->detections.detections[i];
@@ -909,6 +913,66 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
         coarse_block.confidence = static_cast<float>(max_confidence);
         coarse_block.last_seen = cloud->header.stamp;
+        Block block_to_upsert = coarse_block;
+        bool precise_pose_used = false;
+
+        if (continuous_cfg_.registration_enabled) {
+          if (!action_client_ || !action_client_->action_server_is_ready()) {
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 2000,
+              "Continuous precise registration skipped: registration action unavailable.");
+          } else if (continuous_registration_attempts >= continuous_cfg_.registration_max_per_frame) {
+            RCLCPP_INFO_THROTTLE(
+              get_logger(), *get_clock(), 2000,
+              "Continuous precise registration skipped: group=%zu fragments=[%s] max_per_frame=%d reached.",
+              group_index,
+              fragment_indices.c_str(),
+              continuous_cfg_.registration_max_per_frame);
+          } else {
+            ++continuous_registration_attempts;
+            Block precise_block;
+            std::string registration_reason;
+            RCLCPP_INFO_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "Continuous precise registration input: group=%zu fragments=[%s] merged_pixels=%d timeout=%.2fs",
+              group_index,
+              fragment_indices.c_str(),
+              merged_pixels,
+              continuous_cfg_.registration_timeout_s);
+            const auto t_registration_start = std::chrono::steady_clock::now();
+            const bool registration_ok = runRegistrationSync(
+              static_cast<uint32_t>(group_index + 1U),
+              *mask_msg,
+              *cloud,
+              cloud->header,
+              continuous_cfg_.registration_timeout_s,
+              precise_block,
+              registration_reason);
+            registration_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - t_registration_start).count();
+
+            if (registration_ok) {
+              block_to_upsert = precise_block;
+              precise_pose_used = true;
+              RCLCPP_INFO_THROTTLE(
+                get_logger(), *get_clock(), 1000,
+                "Continuous precise registration accepted: group=%zu fragments=[%s] pos=[%.3f, %.3f, %.3f] confidence=%.3f",
+                group_index,
+                fragment_indices.c_str(),
+                precise_block.pose.position.x,
+                precise_block.pose.position.y,
+                precise_block.pose.position.z,
+                precise_block.confidence);
+            } else {
+              RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
+                group_index,
+                fragment_indices.c_str(),
+                registration_reason.c_str());
+            }
+          }
+        }
 
         std::string assigned_id;
         std::string upsert_reason;
@@ -922,7 +986,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           upsert_ok = cbpwm::upsertRegisteredBlock(
             persistent_world_,
             world_block_counter_,
-            coarse_block,
+            block_to_upsert,
             cbpwm::OneShotMode::kSceneDiscovery,
             "",
             cloud->header,
@@ -942,7 +1006,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
             "Continuous upsert rejected: group=%zu fragments=[%s] confidence=%.3f reason=%s",
             group_index,
             fragment_indices.c_str(),
-            coarse_block.confidence,
+            block_to_upsert.confidence,
             upsert_reason.c_str());
           continue;
         }
@@ -952,13 +1016,13 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           "Continuous world-model upsert: group=%zu fragments=[%s] incoming=%s assigned=%s confidence=%.3f pose_status=%d",
           group_index,
           fragment_indices.c_str(),
-          coarse_block.id.c_str(),
+          block_to_upsert.id.c_str(),
           assigned_id.c_str(),
-          coarse_block.confidence,
-          coarse_block.pose_status);
+          block_to_upsert.confidence,
+          block_to_upsert.pose_status);
 
         ++accepted_count;
-        coarse_block.id = assigned_id;
+        block_to_upsert.id = assigned_id;
         for (const size_t candidate_index : group.candidate_indices) {
           accepted_by_detection[candidates.at(candidate_index).detection_index] = true;
         }
@@ -966,13 +1030,14 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         cv::bitwise_or(merged_mask_debug, group.merged_mask, merged_mask_debug);
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Continuous merged coarse upsert accepted: group=%zu fragments=[%s] assigned=%s merged_pixels=%d cutout_points=%u confidence=%.3f",
+          "Continuous merged upsert accepted: group=%zu fragments=[%s] assigned=%s pose=%s merged_pixels=%d cutout_points=%u confidence=%.3f",
           group_index,
           fragment_indices.c_str(),
           assigned_id.c_str(),
+          precise_pose_used ? "PRECISE" : "COARSE",
           merged_pixels,
           merged_cutout_cloud.width * merged_cutout_cloud.height,
-          coarse_block.confidence);
+          block_to_upsert.confidence);
       }
 
       if (continuous_merged_mask_pub_) {
@@ -1007,6 +1072,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         static_cast<double>(seg_ms),
         static_cast<double>(cutout_sum_ms),
         static_cast<double>(coarse_sum_ms),
+        static_cast<double>(registration_sum_ms),
         static_cast<double>(upsert_sum_ms),
         static_cast<double>(total_ms),
         static_cast<double>(seg_res->detections.detections.size()),
@@ -1014,13 +1080,14 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         static_cast<double>(rejected_count));
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Continuous perception frame: detections=%zu accepted=%zu rejected=%zu seg=%ld cutout=%ld coarse=%ld upsert=%ld total=%ld ms",
+        "Continuous perception frame: detections=%zu accepted=%zu rejected=%zu seg=%ld cutout=%ld coarse=%ld registration=%ld upsert=%ld total=%ld ms",
         seg_res->detections.detections.size(),
         accepted_count,
         rejected_count,
         seg_ms,
         cutout_sum_ms,
         coarse_sum_ms,
+        registration_sum_ms,
         upsert_sum_ms,
         total_ms);
       resetBusy();

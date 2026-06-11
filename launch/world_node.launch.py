@@ -60,6 +60,7 @@ def generate_launch_description():
                     ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
                     ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
                     ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
+                    ("timing/continuous_registration_ms", "/cbp/timing/continuous_registration_ms"),
                     ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
                     ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
                     ("timing/continuous_detections", "/cbp/timing/continuous_detections"),

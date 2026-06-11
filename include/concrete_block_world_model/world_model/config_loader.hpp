@@ -53,6 +53,9 @@ struct WorldModelConfig
   int continuous_min_valid_cloud_points{120};
   bool continuous_mask_merge_enabled{true};
   double continuous_mask_merge_max_centroid_distance_m{0.6};
+  bool continuous_registration_enabled{false};
+  double continuous_registration_timeout_s{3.0};
+  int continuous_registration_max_per_frame{1};
   double continuous_association_max_distance_m{0.8};
   double continuous_association_max_age_s{20.0};
   bool scene_discovery_coarse_fallback_enabled{true};

@@ -372,6 +372,15 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_mask_merge_max_centroid_distance_m = node.declare_parameter<double>(
     "continuous.mask_merge.max_centroid_distance_m",
     0.6);
+  cfg.continuous_registration_enabled = node.declare_parameter<bool>(
+    "continuous.registration.enabled",
+    false);
+  cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
+    "continuous.registration.timeout_s",
+    3.0);
+  cfg.continuous_registration_max_per_frame = node.declare_parameter<int>(
+    "continuous.registration.max_per_frame",
+    1);
   cfg.continuous_association_max_distance_m = node.declare_parameter<double>(
     "continuous.association.max_distance_m",
     0.8);
@@ -508,6 +517,8 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     cfg.continuous_mask_merge_max_centroid_distance_m,
     0.0,
     "continuous.mask_merge.max_centroid_distance_m");
+  clamp_min(cfg.continuous_registration_timeout_s, 0.01, "continuous.registration.timeout_s");
+  clamp_min_i(cfg.continuous_registration_max_per_frame, 1, "continuous.registration.max_per_frame");
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
