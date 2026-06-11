@@ -209,7 +209,8 @@ bool PerceptionOrchestratorNode::buildCoarseBlockFromCloudCentroid(
     const std_msgs::msg::Header & header,
     const Eigen::Vector3d * camera_origin_world,
     Block & out_block,
-    std::string & reason) const
+    std::string & reason,
+    int min_points_override) const
   {
     cbpwm::CoarsePoseInput in;
     in.detection_id = detection_id;
@@ -218,7 +219,8 @@ bool PerceptionOrchestratorNode::buildCoarseBlockFromCloudCentroid(
     in.camera_origin_world = camera_origin_world;
 
     cbpwm::CoarsePoseConfig cfg;
-    cfg.min_points = scene_discovery_coarse_fallback_min_points_;
+    cfg.min_points =
+      min_points_override > 0 ? min_points_override : scene_discovery_coarse_fallback_min_points_;
     cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
     cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
     cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;

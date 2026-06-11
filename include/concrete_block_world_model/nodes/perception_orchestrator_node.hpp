@@ -26,6 +26,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -40,6 +41,7 @@
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
 #include "concrete_block_perception_interfaces/srv/register_block.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
+#include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
@@ -63,6 +65,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
   using RegisterBlockSrv = concrete_block_perception_interfaces::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
+  using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
   using RegisterBlock = concrete_block_perception_interfaces::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
@@ -100,6 +103,23 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     bool debug_log{true};
   };
 
+  enum class PerceptionMode
+  {
+    kIdle,
+    kContinuous
+  };
+
+  struct ContinuousConfig
+  {
+    int process_every_n_frames{3};
+    double segmentation_timeout_s{1.0};
+    int min_mask_pixels{2000};
+    double min_mask_fill_ratio{0.15};
+    int min_valid_cloud_points{120};
+    double association_max_distance_m{0.8};
+    double association_max_age_s{20.0};
+  };
+
   struct RuntimeConfig
   {
     double min_fitness{0.3};
@@ -134,7 +154,8 @@ private:
     const std_msgs::msg::Header & header,
     const Eigen::Vector3d * camera_origin_world,
     Block & out_block,
-    std::string & reason) const;
+    std::string & reason,
+    int min_points_override = -1) const;
   bool runRegistrationServiceCutoutSync(
     const sensor_msgs::msg::Image & mask,
     const sensor_msgs::msg::PointCloud2 & cloud,
@@ -216,6 +237,9 @@ private:
   void handleSetBlockTaskStatus(
     const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
     std::shared_ptr<SetBlockTaskStatusSrv::Response> response);
+  void handleSetPerceptionMode(
+    const std::shared_ptr<SetPerceptionModeSrv::Request> request,
+    std::shared_ptr<SetPerceptionModeSrv::Response> response);
   void handleUpsertBlock(
     const std::shared_ptr<UpsertBlockSrv::Request> request,
     std::shared_ptr<UpsertBlockSrv::Response> response);
@@ -236,6 +260,14 @@ private:
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
     std::chrono::steady_clock::time_point t_start,
     const OneShotRequest & run_request);
+  void handleContinuousSegmentationResponse(
+    rclcpp::Client<SegmentSrv>::SharedFuture seg_future,
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    std::chrono::steady_clock::time_point t_start);
+  void processContinuousFrame(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
   void processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
@@ -253,6 +285,7 @@ private:
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
+  rclcpp::Service<SetPerceptionModeSrv>::SharedPtr set_perception_mode_srv_;
   rclcpp::CallbackGroup::SharedPtr run_pose_cb_group_;
   rclcpp::CallbackGroup::SharedPtr action_client_cb_group_;
   rclcpp::TimerBase::SharedPtr marker_refresh_timer_;
@@ -261,7 +294,16 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   size_t last_published_block_count_{0};
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr refine_grasped_roi_input_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_seg_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_cutout_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_coarse_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_upsert_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_total_ms_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_detections_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_accepted_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_rejected_pub_;
 
   std::unordered_map<std::string, Block> persistent_world_;
   std::mutex persistent_world_mutex_;
@@ -281,6 +323,10 @@ private:
   std::vector<PlanningSceneObject> static_scene_objects_;
   std::array<double, 3> block_dimensions_m_{0.6, 0.9, 0.6};
   RuntimeConfig runtime_cfg_;
+  ContinuousConfig continuous_cfg_;
+  std::atomic<PerceptionMode> perception_mode_{PerceptionMode::kIdle};
+  std::atomic<uint64_t> continuous_seen_frames_{0};
+  bool protect_task_blocks_from_timeout_{true};
   std::atomic<bool> debug_detection_overlay_enabled_{true};
   std::atomic<bool> debug_refine_grasped_roi_input_enabled_{true};
   bool perf_log_timing_enabled_{true};

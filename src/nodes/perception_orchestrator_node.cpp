@@ -23,6 +23,17 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     runtime_cfg_.association_max_age_s = startup.association_max_age_s;
     runtime_cfg_.min_update_confidence = startup.min_update_confidence;
     runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
+    protect_task_blocks_from_timeout_ = startup.protect_task_blocks_from_timeout;
+    continuous_cfg_.process_every_n_frames = startup.continuous_process_every_n_frames;
+    continuous_cfg_.segmentation_timeout_s = startup.continuous_segmentation_timeout_s;
+    continuous_cfg_.min_mask_pixels = startup.continuous_min_mask_pixels;
+    continuous_cfg_.min_mask_fill_ratio = startup.continuous_min_mask_fill_ratio;
+    continuous_cfg_.min_valid_cloud_points = startup.continuous_min_valid_cloud_points;
+    continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
+    continuous_cfg_.association_max_age_s = startup.continuous_association_max_age_s;
+    perception_mode_.store(
+      cbpwm::normalizeMode(startup.perception_mode) == "CONTINUOUS" ?
+      PerceptionMode::kContinuous : PerceptionMode::kIdle);
     scene_discovery_coarse_fallback_enabled_ = startup.scene_discovery_coarse_fallback_enabled;
     scene_discovery_coarse_fallback_min_points_ = startup.scene_discovery_coarse_fallback_min_points;
     coarse_surface_square_ratio_thresh_ = startup.coarse_surface_square_ratio_thresh;
@@ -92,6 +103,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
       det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
         "debug/detection_overlay", debug_image_qos);
+      yolo_service_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
+        "debug/yolo_service_debug_image", debug_image_qos);
     }
     if (debug_refine_grasped_roi_input_enabled_.load()) {
       const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
@@ -160,8 +173,25 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       get_logger(), startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
+    const auto marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-      "block_world_model_markers", 10);
+      "block_world_model_markers", marker_qos);
+    continuous_timing_seg_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_seg_ms", 10);
+    continuous_timing_cutout_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_cutout_ms", 10);
+    continuous_timing_coarse_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_coarse_ms", 10);
+    continuous_timing_upsert_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_upsert_ms", 10);
+    continuous_timing_total_ms_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_total_ms", 10);
+    continuous_timing_detections_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_detections", 10);
+    continuous_timing_accepted_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_accepted", 10);
+    continuous_timing_rejected_pub_ =
+      create_publisher<std_msgs::msg::Float64>("timing/continuous_rejected", 10);
 
     image_sub_.subscribe(this, "image");
     cloud_sub_.subscribe(this, "points");
@@ -213,6 +243,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       rmw_qos_profile_services_default,
       run_pose_cb_group_);
 
+    set_perception_mode_srv_ = create_service<SetPerceptionModeSrv>(
+      "~/set_perception_mode",
+      std::bind(
+        &PerceptionOrchestratorNode::handleSetPerceptionMode,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     set_block_task_status_srv_ = create_service<SetBlockTaskStatusSrv>(
       "~/set_block_task_status",
       std::bind(
@@ -242,7 +280,15 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=ON_DEMAND_NEXT_FRAME");
+      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d quality[min_pixels=%d fill=%.3f min_points=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
+      perception_mode_.load() == PerceptionMode::kContinuous ?
+      "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
+      continuous_cfg_.process_every_n_frames,
+      continuous_cfg_.min_mask_pixels,
+      continuous_cfg_.min_mask_fill_ratio,
+      continuous_cfg_.min_valid_cloud_points,
+      continuous_cfg_.association_max_distance_m,
+      continuous_cfg_.association_max_age_s);
     if (refine_grasped_use_fk_roi_) {
       WM_LOG(
         get_logger(),

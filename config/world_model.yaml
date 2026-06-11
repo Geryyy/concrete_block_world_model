@@ -9,6 +9,7 @@ world_model_node:
       association_max_distance_m: 0.45
       association_max_age_s: 20.0
       min_update_confidence: 0.25
+      protect_task_blocks_from_timeout: true
       refine_target_max_distance_m: 1.2
       static_scene_objects: |
         - id: post_right_1
@@ -63,6 +64,21 @@ world_model_node:
           # rectangular front face -> smaller offset (0.30 m)
           square_m: 0.45
           rect_m: 0.30
+
+    # ----------------------------------
+    # Continuous coarse perception mode
+    # ----------------------------------
+    continuous:
+      process_every_n_frames: 3
+      segmentation_timeout_s: 1.0
+      quality:
+        min_mask_pixels: 2000
+        min_mask_fill_ratio: 0.15
+        min_valid_cloud_points: 120
+      association:
+        # Coarse centroids can jump more than precise ICP poses when masks are partial.
+        max_distance_m: 0.8
+        max_age_s: 20.0
 
     # ----------------------------------
     # Registration gating

@@ -199,6 +199,38 @@ void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
       cbpwm::taskStatusToString(target_task_status));
   }
 
+void PerceptionOrchestratorNode::handleSetPerceptionMode(
+    const std::shared_ptr<SetPerceptionModeSrv::Request> request,
+    std::shared_ptr<SetPerceptionModeSrv::Response> response)
+  {
+    const std::string mode = cbpwm::normalizeMode(request->mode);
+    if (mode == "CONTINUOUS") {
+      perception_mode_.store(PerceptionMode::kContinuous);
+      debug_detection_overlay_enabled_ = request->enable_debug;
+      response->success = true;
+      response->message = "Perception mode set to CONTINUOUS.";
+      RCLCPP_INFO(
+        get_logger(),
+        "SetPerceptionMode: CONTINUOUS target=%s debug=%s",
+        request->target_block_id.empty() ? "<all>" : request->target_block_id.c_str(),
+        request->enable_debug ? "true" : "false");
+      return;
+    }
+
+    if (mode == "IDLE" || mode == "ON_DEMAND") {
+      perception_mode_.store(PerceptionMode::kIdle);
+      response->success = true;
+      response->message = "Perception mode set to IDLE. One-shot run_pose_estimation remains available.";
+      RCLCPP_INFO(get_logger(), "SetPerceptionMode: IDLE");
+      return;
+    }
+
+    response->success = false;
+    response->message = "Unsupported perception mode: " + request->mode +
+      " (expected IDLE, ON_DEMAND, or CONTINUOUS).";
+    RCLCPP_WARN(get_logger(), "SetPerceptionMode rejected: %s", response->message.c_str());
+  }
+
 void PerceptionOrchestratorNode::handleUpsertBlock(
     const std::shared_ptr<UpsertBlockSrv::Request> request,
     std::shared_ptr<UpsertBlockSrv::Response> response)
