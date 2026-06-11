@@ -52,6 +52,7 @@ def generate_launch_description():
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
                     ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
+                    ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
                     ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
                     ("debug/registration_template", "/cbp/debug/registration_template"),

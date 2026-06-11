@@ -366,8 +366,11 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_min_valid_cloud_points = node.declare_parameter<int>(
     "continuous.quality.min_valid_cloud_points",
     120);
-  cfg.continuous_duplicate_suppression_distance_m = node.declare_parameter<double>(
-    "continuous.duplicate_suppression_distance_m",
+  cfg.continuous_mask_merge_enabled = node.declare_parameter<bool>(
+    "continuous.mask_merge.enabled",
+    true);
+  cfg.continuous_mask_merge_max_centroid_distance_m = node.declare_parameter<double>(
+    "continuous.mask_merge.max_centroid_distance_m",
     0.6);
   cfg.continuous_association_max_distance_m = node.declare_parameter<double>(
     "continuous.association.max_distance_m",
@@ -502,9 +505,9 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min_i(
     cfg.continuous_min_valid_cloud_points, 0, "continuous.quality.min_valid_cloud_points");
   clamp_min(
-    cfg.continuous_duplicate_suppression_distance_m,
+    cfg.continuous_mask_merge_max_centroid_distance_m,
     0.0,
-    "continuous.duplicate_suppression_distance_m");
+    "continuous.mask_merge.max_centroid_distance_m");
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");

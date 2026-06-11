@@ -119,7 +119,8 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_mask_pixels{2000};
     double min_mask_fill_ratio{0.15};
     int min_valid_cloud_points{120};
-    double duplicate_suppression_distance_m{0.6};
+    bool mask_merge_enabled{true};
+    double mask_merge_max_centroid_distance_m{0.6};
     double association_max_distance_m{0.8};
     double association_max_age_s{20.0};
   };
@@ -300,6 +301,7 @@ private:
   size_t last_published_block_count_{0};
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr continuous_merged_mask_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr refine_grasped_roi_input_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_seg_ms_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_cutout_ms_pub_;

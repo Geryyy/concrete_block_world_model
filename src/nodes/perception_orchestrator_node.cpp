@@ -30,8 +30,9 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     continuous_cfg_.min_mask_pixels = startup.continuous_min_mask_pixels;
     continuous_cfg_.min_mask_fill_ratio = startup.continuous_min_mask_fill_ratio;
     continuous_cfg_.min_valid_cloud_points = startup.continuous_min_valid_cloud_points;
-    continuous_cfg_.duplicate_suppression_distance_m =
-      startup.continuous_duplicate_suppression_distance_m;
+    continuous_cfg_.mask_merge_enabled = startup.continuous_mask_merge_enabled;
+    continuous_cfg_.mask_merge_max_centroid_distance_m =
+      startup.continuous_mask_merge_max_centroid_distance_m;
     continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
     continuous_cfg_.association_max_age_s = startup.continuous_association_max_age_s;
     perception_mode_.store(
@@ -108,6 +109,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         "debug/detection_overlay", debug_image_qos);
       yolo_service_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
         "debug/yolo_service_debug_image", debug_image_qos);
+      continuous_merged_mask_pub_ = create_publisher<sensor_msgs::msg::Image>(
+        "debug/continuous_merged_mask", debug_image_qos);
     }
     if (debug_refine_grasped_roi_input_enabled_.load()) {
       const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
@@ -287,7 +290,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] duplicate_suppression=%.3fm continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       continuous_cfg_.process_every_n_frames,
@@ -296,7 +299,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       continuous_cfg_.min_mask_pixels,
       continuous_cfg_.min_mask_fill_ratio,
       continuous_cfg_.min_valid_cloud_points,
-      continuous_cfg_.duplicate_suppression_distance_m,
+      continuous_cfg_.mask_merge_enabled ? "true" : "false",
+      continuous_cfg_.mask_merge_max_centroid_distance_m,
       continuous_cfg_.association_max_distance_m,
       continuous_cfg_.association_max_age_s);
     if (refine_grasped_use_fk_roi_) {

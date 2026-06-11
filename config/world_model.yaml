@@ -73,11 +73,13 @@ world_model_node:
       segmentation_timeout_s: 1.0
       cutout_timeout_s: 1.0
       quality:
-        min_mask_pixels: 2000
-        min_mask_fill_ratio: 0.15
+        min_mask_pixels: 100
+        min_mask_fill_ratio: 0.05
         min_valid_cloud_points: 120
-      # Suppress same-frame split masks that describe the same physical block.
-      duplicate_suppression_distance_m: 0.6
+      # Combine same-frame split masks that describe the same physical block.
+      mask_merge:
+        enabled: true
+        max_centroid_distance_m: 0.6
       association:
         # Coarse centroids can jump more than precise ICP poses when masks are partial.
         max_distance_m: 0.8

@@ -21,6 +21,22 @@ struct ContinuousMaskQuality
   std::string reason;
 };
 
+struct ContinuousMaskCandidate
+{
+  size_t detection_index{0};
+  cv::Mat mask;
+  ContinuousMaskQuality quality;
+  Block coarse_block;
+  double confidence{1.0};
+  uint32_t cutout_points{0};
+};
+
+struct ContinuousMaskGroup
+{
+  std::vector<size_t> candidate_indices;
+  cv::Mat merged_mask;
+};
+
 double detectionConfidence(const vision_msgs::msg::Detection2D & det)
 {
   if (det.results.empty()) {
@@ -109,6 +125,28 @@ void logContinuousQuality(
     quality.fill_ratio,
     quality.accepted ? "true" : "false",
     quality.reason.c_str());
+}
+
+bool candidateFitsGroup(
+  const ContinuousMaskCandidate & candidate,
+  const ContinuousMaskGroup & group,
+  const std::vector<ContinuousMaskCandidate> & candidates,
+  double max_centroid_distance_m,
+  double & nearest_distance_m)
+{
+  bool fits = false;
+  nearest_distance_m = std::numeric_limits<double>::infinity();
+  for (const size_t grouped_index : group.candidate_indices) {
+    const double dist =
+      cbpwm::blockDistance(candidate.coarse_block, candidates.at(grouped_index).coarse_block);
+    if (dist < nearest_distance_m) {
+      nearest_distance_m = dist;
+    }
+    if (dist <= max_centroid_distance_m) {
+      fits = true;
+    }
+  }
+  return fits;
 }
 
 }  // namespace
@@ -612,7 +650,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       int64_t cutout_sum_ms = 0;
       int64_t coarse_sum_ms = 0;
       int64_t upsert_sum_ms = 0;
-      std::vector<Block> accepted_frame_blocks;
+      std::vector<ContinuousMaskCandidate> candidates;
       for (size_t i = 0; i < seg_res->detections.detections.size(); ++i) {
         const auto & det = seg_res->detections.detections[i];
         cv::Mat det_mask = extract_mask_roi(full_mask, det);
@@ -704,44 +742,173 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Continuous coarse pose output: idx=%zu id=%s pos=[%.3f, %.3f, %.3f] reason=%s",
+          "Continuous fragment coarse pose: idx=%zu id=%s pos=[%.3f, %.3f, %.3f] cutout_points=%u reason=%s",
           i,
           coarse_block.id.c_str(),
           coarse_block.pose.position.x,
           coarse_block.pose.position.y,
           coarse_block.pose.position.z,
+          cutout_cloud.width * cutout_cloud.height,
           coarse_reason.c_str());
 
         coarse_block.confidence = static_cast<float>(detectionConfidence(det));
         coarse_block.last_seen = cloud->header.stamp;
+        candidates.push_back(
+          ContinuousMaskCandidate{
+            i,
+            binary_mask.clone(),
+            quality,
+            coarse_block,
+            detectionConfidence(det),
+            cutout_cloud.width * cutout_cloud.height});
+      }
 
-        bool duplicate_in_frame = false;
-        double duplicate_dist_m = std::numeric_limits<double>::infinity();
-        std::string duplicate_block_id;
-        if (continuous_cfg_.duplicate_suppression_distance_m > 0.0) {
-          for (const auto & accepted_block : accepted_frame_blocks) {
-            const double dist = cbpwm::blockDistance(coarse_block, accepted_block);
-            if (dist <= continuous_cfg_.duplicate_suppression_distance_m &&
-              dist < duplicate_dist_m)
+      std::vector<ContinuousMaskGroup> groups;
+      for (size_t candidate_index = 0; candidate_index < candidates.size(); ++candidate_index) {
+        const auto & candidate = candidates[candidate_index];
+        size_t best_group_index = groups.size();
+        double best_group_distance_m = std::numeric_limits<double>::infinity();
+        if (continuous_cfg_.mask_merge_enabled &&
+          continuous_cfg_.mask_merge_max_centroid_distance_m > 0.0)
+        {
+          for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
+            double nearest_distance_m = std::numeric_limits<double>::infinity();
+            if (candidateFitsGroup(
+                candidate,
+                groups[group_index],
+                candidates,
+                continuous_cfg_.mask_merge_max_centroid_distance_m,
+                nearest_distance_m) &&
+              nearest_distance_m < best_group_distance_m)
             {
-              duplicate_in_frame = true;
-              duplicate_dist_m = dist;
-              duplicate_block_id = accepted_block.id;
+              best_group_index = group_index;
+              best_group_distance_m = nearest_distance_m;
             }
           }
         }
-        if (duplicate_in_frame) {
-          ++rejected_count;
-          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+
+        if (best_group_index == groups.size()) {
+          ContinuousMaskGroup group;
+          group.candidate_indices.push_back(candidate_index);
+          group.merged_mask = candidate.mask.clone();
+          groups.push_back(std::move(group));
           RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous duplicate mask suppressed: idx=%zu near=%s dist=%.3fm threshold=%.3fm",
-            i,
-            duplicate_block_id.c_str(),
-            duplicate_dist_m,
-            continuous_cfg_.duplicate_suppression_distance_m);
+            get_logger(), *get_clock(), 1000,
+            "Continuous mask merge: started group=%zu from idx=%zu pos=[%.3f, %.3f, %.3f]",
+            groups.size() - 1U,
+            candidate.detection_index,
+            candidate.coarse_block.pose.position.x,
+            candidate.coarse_block.pose.position.y,
+            candidate.coarse_block.pose.position.z);
           continue;
         }
+
+        groups[best_group_index].candidate_indices.push_back(candidate_index);
+        cv::bitwise_or(
+          groups[best_group_index].merged_mask,
+          candidate.mask,
+          groups[best_group_index].merged_mask);
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous mask merge: added idx=%zu to group=%zu nearest_dist=%.3fm threshold=%.3fm",
+          candidate.detection_index,
+          best_group_index,
+          best_group_distance_m,
+          continuous_cfg_.mask_merge_max_centroid_distance_m);
+      }
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous mask merge summary: candidates=%zu groups=%zu enabled=%s threshold=%.3fm",
+        candidates.size(),
+        groups.size(),
+        continuous_cfg_.mask_merge_enabled ? "true" : "false",
+        continuous_cfg_.mask_merge_max_centroid_distance_m);
+
+      cv::Mat merged_mask_debug = cv::Mat::zeros(full_mask.size(), CV_8UC1);
+      for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
+        const auto & group = groups[group_index];
+        const int merged_pixels = cv::countNonZero(group.merged_mask);
+        int source_pixels = 0;
+        uint32_t source_cutout_points = 0;
+        double max_confidence = 0.0;
+        std::string fragment_indices;
+        for (const size_t candidate_index : group.candidate_indices) {
+          const auto & candidate = candidates.at(candidate_index);
+          source_pixels += candidate.quality.mask_pixels;
+          source_cutout_points += candidate.cutout_points;
+          max_confidence = std::max(max_confidence, candidate.confidence);
+          if (!fragment_indices.empty()) {
+            fragment_indices += ",";
+          }
+          fragment_indices += std::to_string(candidate.detection_index);
+        }
+
+        const auto mask_msg =
+          cv_bridge::CvImage(cloud->header, "mono8", group.merged_mask).toImageMsg();
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous merged cutout input: group=%zu fragments=[%s] merged_pixels=%d source_pixels=%d source_cutout_points=%u",
+          group_index,
+          fragment_indices.c_str(),
+          merged_pixels,
+          source_pixels,
+          source_cutout_points);
+
+        sensor_msgs::msg::PointCloud2 merged_cutout_cloud;
+        std::string cutout_reason;
+        const auto t_cutout_start = std::chrono::steady_clock::now();
+        const bool got_cutout = extractMaskCutoutSync(
+          *mask_msg,
+          *cloud,
+          continuous_cfg_.cutout_timeout_s,
+          merged_cutout_cloud,
+          cutout_reason);
+        cutout_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_cutout_start).count();
+        if (!got_cutout) {
+          ++rejected_count;
+          cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Continuous merged cutout rejected: group=%zu fragments=[%s] merged_pixels=%d reason=%s",
+            group_index,
+            fragment_indices.c_str(),
+            merged_pixels,
+            cutout_reason.c_str());
+          continue;
+        }
+
+        Block coarse_block;
+        std::string coarse_reason;
+        const auto t_coarse_start = std::chrono::steady_clock::now();
+        const bool coarse_ok = buildCoarseBlockFromCloudCentroid(
+          static_cast<uint32_t>(group_index + 1U),
+          *mask_msg,
+          merged_cutout_cloud,
+          merged_cutout_cloud.header,
+          have_camera_origin ? &camera_origin_world : nullptr,
+          coarse_block,
+          coarse_reason,
+          continuous_cfg_.min_valid_cloud_points);
+        coarse_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_coarse_start).count();
+        if (!coarse_ok) {
+          ++rejected_count;
+          cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Continuous merged coarse pose rejected: group=%zu fragments=[%s] merged_pixels=%d cutout_points=%u reason=%s",
+            group_index,
+            fragment_indices.c_str(),
+            merged_pixels,
+            merged_cutout_cloud.width * merged_cutout_cloud.height,
+            coarse_reason.c_str());
+          continue;
+        }
+
+        coarse_block.confidence = static_cast<float>(max_confidence);
+        coarse_block.last_seen = cloud->header.stamp;
 
         std::string assigned_id;
         std::string upsert_reason;
@@ -769,11 +936,12 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
         if (!upsert_ok) {
           ++rejected_count;
-          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+          cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
           RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 2000,
-            "Continuous upsert rejected: idx=%zu confidence=%.3f reason=%s",
-            i,
+            "Continuous upsert rejected: group=%zu fragments=[%s] confidence=%.3f reason=%s",
+            group_index,
+            fragment_indices.c_str(),
             coarse_block.confidence,
             upsert_reason.c_str());
           continue;
@@ -781,8 +949,9 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Continuous world-model upsert: idx=%zu incoming=%s assigned=%s confidence=%.3f pose_status=%d",
-          i,
+          "Continuous world-model upsert: group=%zu fragments=[%s] incoming=%s assigned=%s confidence=%.3f pose_status=%d",
+          group_index,
+          fragment_indices.c_str(),
           coarse_block.id.c_str(),
           assigned_id.c_str(),
           coarse_block.confidence,
@@ -790,18 +959,26 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
         ++accepted_count;
         coarse_block.id = assigned_id;
-        accepted_frame_blocks.push_back(coarse_block);
-        accepted_by_detection[i] = true;
-        cv::bitwise_or(accepted_mask, binary_mask, accepted_mask);
+        for (const size_t candidate_index : group.candidate_indices) {
+          accepted_by_detection[candidates.at(candidate_index).detection_index] = true;
+        }
+        cv::bitwise_or(accepted_mask, group.merged_mask, accepted_mask);
+        cv::bitwise_or(merged_mask_debug, group.merged_mask, merged_mask_debug);
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Continuous coarse upsert accepted: idx=%zu assigned=%s pixels=%d fill=%.3f cutout_points=%u confidence=%.3f",
-          i,
+          "Continuous merged coarse upsert accepted: group=%zu fragments=[%s] assigned=%s merged_pixels=%d cutout_points=%u confidence=%.3f",
+          group_index,
+          fragment_indices.c_str(),
           assigned_id.c_str(),
-          quality.mask_pixels,
-          quality.fill_ratio,
-          cutout_cloud.width * cutout_cloud.height,
+          merged_pixels,
+          merged_cutout_cloud.width * merged_cutout_cloud.height,
           coarse_block.confidence);
+      }
+
+      if (continuous_merged_mask_pub_) {
+        auto merged_debug_msg =
+          cv_bridge::CvImage(image->header, "mono8", merged_mask_debug).toImageMsg();
+        continuous_merged_mask_pub_->publish(*merged_debug_msg);
       }
 
       if (debug_detection_overlay_enabled_.load() && det_debug_pub_) {
