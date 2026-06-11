@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -474,7 +475,7 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
         ", tracked=" + std::to_string(tracked_count) +
         ", registration_candidates=" + std::to_string(registration_candidates) +
         ", registrations=" + std::to_string(counters.registrations_ok) +
-        ", coarse_registrations=" + std::to_string(counters.coarse_upserts_ok) + ").");
+        ", coarse_upserts=" + std::to_string(counters.coarse_upserts_ok) + ").");
 
       resetBusy();
     } catch (const std::exception & e) {
@@ -611,6 +612,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       int64_t cutout_sum_ms = 0;
       int64_t coarse_sum_ms = 0;
       int64_t upsert_sum_ms = 0;
+      std::vector<Block> accepted_frame_blocks;
       for (size_t i = 0; i < seg_res->detections.detections.size(); ++i) {
         const auto & det = seg_res->detections.detections[i];
         cv::Mat det_mask = extract_mask_roi(full_mask, det);
@@ -653,10 +655,10 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         sensor_msgs::msg::PointCloud2 cutout_cloud;
         std::string cutout_reason;
         const auto t_cutout_start = std::chrono::steady_clock::now();
-        const bool got_cutout = runRegistrationServiceCutoutSync(
+        const bool got_cutout = extractMaskCutoutSync(
           *mask_msg,
           *cloud,
-          continuous_cfg_.segmentation_timeout_s,
+          continuous_cfg_.cutout_timeout_s,
           cutout_cloud,
           cutout_reason);
         cutout_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -713,6 +715,34 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         coarse_block.confidence = static_cast<float>(detectionConfidence(det));
         coarse_block.last_seen = cloud->header.stamp;
 
+        bool duplicate_in_frame = false;
+        double duplicate_dist_m = std::numeric_limits<double>::infinity();
+        std::string duplicate_block_id;
+        if (continuous_cfg_.duplicate_suppression_distance_m > 0.0) {
+          for (const auto & accepted_block : accepted_frame_blocks) {
+            const double dist = cbpwm::blockDistance(coarse_block, accepted_block);
+            if (dist <= continuous_cfg_.duplicate_suppression_distance_m &&
+              dist < duplicate_dist_m)
+            {
+              duplicate_in_frame = true;
+              duplicate_dist_m = dist;
+              duplicate_block_id = accepted_block.id;
+            }
+          }
+        }
+        if (duplicate_in_frame) {
+          ++rejected_count;
+          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Continuous duplicate mask suppressed: idx=%zu near=%s dist=%.3fm threshold=%.3fm",
+            i,
+            duplicate_block_id.c_str(),
+            duplicate_dist_m,
+            continuous_cfg_.duplicate_suppression_distance_m);
+          continue;
+        }
+
         std::string assigned_id;
         std::string upsert_reason;
         bool upsert_ok = false;
@@ -759,6 +789,8 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
           coarse_block.pose_status);
 
         ++accepted_count;
+        coarse_block.id = assigned_id;
+        accepted_frame_blocks.push_back(coarse_block);
         accepted_by_detection[i] = true;
         cv::bitwise_or(accepted_mask, binary_mask, accepted_mask);
         RCLCPP_INFO_THROTTLE(

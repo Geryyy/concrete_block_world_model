@@ -47,9 +47,11 @@ struct WorldModelConfig
   std::string perception_mode{"IDLE"};
   int continuous_process_every_n_frames{3};
   double continuous_segmentation_timeout_s{1.0};
+  double continuous_cutout_timeout_s{1.0};
   int continuous_min_mask_pixels{2000};
   double continuous_min_mask_fill_ratio{0.15};
   int continuous_min_valid_cloud_points{120};
+  double continuous_duplicate_suppression_distance_m{0.6};
   double continuous_association_max_distance_m{0.8};
   double continuous_association_max_age_s{20.0};
   bool scene_discovery_coarse_fallback_enabled{true};

@@ -26,9 +26,12 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     protect_task_blocks_from_timeout_ = startup.protect_task_blocks_from_timeout;
     continuous_cfg_.process_every_n_frames = startup.continuous_process_every_n_frames;
     continuous_cfg_.segmentation_timeout_s = startup.continuous_segmentation_timeout_s;
+    continuous_cfg_.cutout_timeout_s = startup.continuous_cutout_timeout_s;
     continuous_cfg_.min_mask_pixels = startup.continuous_min_mask_pixels;
     continuous_cfg_.min_mask_fill_ratio = startup.continuous_min_mask_fill_ratio;
     continuous_cfg_.min_valid_cloud_points = startup.continuous_min_valid_cloud_points;
+    continuous_cfg_.duplicate_suppression_distance_m =
+      startup.continuous_duplicate_suppression_distance_m;
     continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
     continuous_cfg_.association_max_age_s = startup.continuous_association_max_age_s;
     perception_mode_.store(
@@ -210,6 +213,10 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "/yolos_segmentor_service/segment",
       rmw_qos_profile_services_default,
       action_client_cb_group_);
+    extract_mask_cutout_client_ = create_client<ExtractMaskCutoutSrv>(
+      "/extract_mask_cutout",
+      rmw_qos_profile_services_default,
+      action_client_cb_group_);
     register_srv_client_ = create_client<RegisterBlockSrv>(
       "/register_block_pose",
       rmw_qos_profile_services_default,
@@ -280,13 +287,16 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d quality[min_pixels=%d fill=%.3f min_points=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] duplicate_suppression=%.3fm continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       continuous_cfg_.process_every_n_frames,
+      continuous_cfg_.segmentation_timeout_s,
+      continuous_cfg_.cutout_timeout_s,
       continuous_cfg_.min_mask_pixels,
       continuous_cfg_.min_mask_fill_ratio,
       continuous_cfg_.min_valid_cloud_points,
+      continuous_cfg_.duplicate_suppression_distance_m,
       continuous_cfg_.association_max_distance_m,
       continuous_cfg_.association_max_age_s);
     if (refine_grasped_use_fk_roi_) {

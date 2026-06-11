@@ -354,6 +354,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_segmentation_timeout_s = node.declare_parameter<double>(
     "continuous.segmentation_timeout_s",
     1.0);
+  cfg.continuous_cutout_timeout_s = node.declare_parameter<double>(
+    "continuous.cutout_timeout_s",
+    1.0);
   cfg.continuous_min_mask_pixels = node.declare_parameter<int>(
     "continuous.quality.min_mask_pixels",
     2000);
@@ -363,6 +366,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_min_valid_cloud_points = node.declare_parameter<int>(
     "continuous.quality.min_valid_cloud_points",
     120);
+  cfg.continuous_duplicate_suppression_distance_m = node.declare_parameter<double>(
+    "continuous.duplicate_suppression_distance_m",
+    0.6);
   cfg.continuous_association_max_distance_m = node.declare_parameter<double>(
     "continuous.association.max_distance_m",
     0.8);
@@ -491,9 +497,14 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min(cfg.refine_target_max_distance_m, 0.01, "world_model.refine_target_max_distance_m");
   clamp_min_i(cfg.continuous_process_every_n_frames, 1, "continuous.process_every_n_frames");
   clamp_min(cfg.continuous_segmentation_timeout_s, 0.01, "continuous.segmentation_timeout_s");
+  clamp_min(cfg.continuous_cutout_timeout_s, 0.01, "continuous.cutout_timeout_s");
   clamp_min_i(cfg.continuous_min_mask_pixels, 0, "continuous.quality.min_mask_pixels");
   clamp_min_i(
     cfg.continuous_min_valid_cloud_points, 0, "continuous.quality.min_valid_cloud_points");
+  clamp_min(
+    cfg.continuous_duplicate_suppression_distance_m,
+    0.0,
+    "continuous.duplicate_suppression_distance_m");
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");

@@ -229,40 +229,43 @@ bool PerceptionOrchestratorNode::buildCoarseBlockFromCloudCentroid(
     return cbpwm::buildCoarseBlockFromCutoutCloud(in, cutout_cloud_msg, cfg, out_block, reason);
   }
 
-bool PerceptionOrchestratorNode::runRegistrationServiceCutoutSync(
+bool PerceptionOrchestratorNode::extractMaskCutoutSync(
     const sensor_msgs::msg::Image & mask,
     const sensor_msgs::msg::PointCloud2 & cloud,
     double timeout_s,
     sensor_msgs::msg::PointCloud2 & out_cutout_cloud,
     std::string & reason)
   {
-    if (!register_srv_client_ || !register_srv_client_->service_is_ready()) {
-      reason = "register_block_pose service unavailable";
+    if (!extract_mask_cutout_client_ || !extract_mask_cutout_client_->service_is_ready()) {
+      reason = "extract_mask_cutout service unavailable";
       return false;
     }
 
-    auto req = std::make_shared<RegisterBlockSrv::Request>();
+    auto req = std::make_shared<ExtractMaskCutoutSrv::Request>();
     req->mask = mask;
     req->cloud = cloud;
-    req->object_class = object_class_;
 
-    auto future = register_srv_client_->async_send_request(req);
+    auto future = extract_mask_cutout_client_->async_send_request(req);
     const auto ret = future.wait_for(std::chrono::duration<double>(timeout_s));
     if (ret != std::future_status::ready) {
-      reason = "register_block_pose service timeout";
+      reason = "extract_mask_cutout service timeout";
       return false;
     }
     const auto res = future.get();
     if (!res) {
-      reason = "empty register_block_pose response";
+      reason = "empty extract_mask_cutout response";
+      return false;
+    }
+    if (!res->success) {
+      reason = res->reason.empty() ? "extract_mask_cutout reported success=false" : res->reason;
       return false;
     }
     if (res->cutout_cloud.data.empty()) {
-      reason = "register_block_pose returned empty cutout_cloud";
+      reason = "extract_mask_cutout returned empty cutout_cloud";
       return false;
     }
     out_cutout_cloud = res->cutout_cloud;
-    reason = "cutout_cloud received from register_block_pose";
+    reason = res->reason.empty() ? "cutout_cloud received from extract_mask_cutout" : res->reason;
     return true;
   }
 
@@ -450,7 +453,7 @@ bool PerceptionOrchestratorNode::trySceneDiscoveryCoarseFallback(
     if (!coarse_ok) {
       sensor_msgs::msg::PointCloud2 cutout_cloud;
       std::string cutout_reason;
-      const bool got_cutout = runRegistrationServiceCutoutSync(
+      const bool got_cutout = extractMaskCutoutSync(
         mask, cloud, run_request.registration_timeout_s, cutout_cloud, cutout_reason);
       if (!got_cutout) {
         RCLCPP_WARN(

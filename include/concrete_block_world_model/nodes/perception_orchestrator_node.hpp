@@ -39,6 +39,7 @@
 #include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_coarse_blocks.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
+#include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
 #include "concrete_block_perception_interfaces/srv/register_block.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
@@ -63,6 +64,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using SetBlockTaskStatusSrv = concrete_block_world_model_interfaces::srv::SetBlockTaskStatus;
   using GetCoarseSrv = concrete_block_world_model_interfaces::srv::GetCoarseBlocks;
   using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
+  using ExtractMaskCutoutSrv = concrete_block_perception_interfaces::srv::ExtractMaskCutout;
   using RegisterBlockSrv = concrete_block_perception_interfaces::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
   using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
@@ -113,9 +115,11 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   {
     int process_every_n_frames{3};
     double segmentation_timeout_s{1.0};
+    double cutout_timeout_s{1.0};
     int min_mask_pixels{2000};
     double min_mask_fill_ratio{0.15};
     int min_valid_cloud_points{120};
+    double duplicate_suppression_distance_m{0.6};
     double association_max_distance_m{0.8};
     double association_max_age_s{20.0};
   };
@@ -156,7 +160,7 @@ private:
     Block & out_block,
     std::string & reason,
     int min_points_override = -1) const;
-  bool runRegistrationServiceCutoutSync(
+  bool extractMaskCutoutSync(
     const sensor_msgs::msg::Image & mask,
     const sensor_msgs::msg::PointCloud2 & cloud,
     double timeout_s,
@@ -278,6 +282,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
+  rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
   rclcpp::Client<RegisterBlockSrv>::SharedPtr register_srv_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
