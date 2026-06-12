@@ -55,6 +55,18 @@ bool isKnownTaskStatus(int status)
 }
 
 
+std::string detectionBlockId(uint32_t detection_id)
+{
+  return "block_" + std::to_string(detection_id);
+}
+
+
+bool isAutoAssignedBlockId(const std::string & id)
+{
+  return id.rfind("block_", 0) == 0;
+}
+
+
 double poseDistance(
   const geometry_msgs::msg::Pose & a,
   const geometry_msgs::msg::Pose & b)

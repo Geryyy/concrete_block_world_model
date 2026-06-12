@@ -4,6 +4,7 @@
 
 #include <cv_bridge/cv_bridge.h>
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
 
@@ -23,11 +24,11 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
   for (size_t i = 0; i < detections.size(); ++i) {
     const auto & det = detections[i];
     const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
-    const std::string det_id = "block_" + std::to_string(detection_id);
+    const std::string det_id = detectionBlockId(detection_id);
 
     if ((run_mode == OneShotMode::kRefineBlock || run_mode == OneShotMode::kRefineGrasped) &&
       !target_block_id.empty() &&
-      target_block_id.rfind("block_", 0) == 0 &&
+      isAutoAssignedBlockId(target_block_id) &&
       det_id != target_block_id)
     {
       continue;

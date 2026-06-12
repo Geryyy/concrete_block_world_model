@@ -1,5 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -381,7 +382,7 @@ bool PerceptionOrchestratorNode::runRegistrationSync(
       return false;
     }
 
-    out_block.id = "block_" + std::to_string(detection_id);
+    out_block.id = detectionBlockId(detection_id);
     out_block.pose = action_result->pose;
     out_block.confidence = action_result->fitness;
     out_block.last_seen = header.stamp;

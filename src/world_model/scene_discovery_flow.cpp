@@ -2,6 +2,8 @@
 
 #include <limits>
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
+
 namespace cbp::world_model
 {
 
@@ -15,7 +17,7 @@ void processRegistrationCandidates(
   const bool targeted_refine =
     (request.mode == OneShotMode::kRefineBlock || request.mode == OneShotMode::kRefineGrasped) &&
     !request.target_block_id.empty() &&
-    request.target_block_id.rfind("block_", 0) != 0;
+    !isAutoAssignedBlockId(request.target_block_id);
 
   concrete_block_world_model_interfaces::msg::Block expected_target;
   const bool have_expected_target =

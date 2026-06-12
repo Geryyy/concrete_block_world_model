@@ -8,6 +8,8 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
+
 namespace cbp::world_model
 {
 
@@ -128,7 +130,7 @@ void fillCoarseBlock(
   float confidence,
   Block & out_block)
 {
-  out_block.id = "block_" + std::to_string(detection_id);
+  out_block.id = detectionBlockId(detection_id);
   out_block.pose.position.x = center_world.x();
   out_block.pose.position.y = center_world.y();
   out_block.pose.position.z = center_world.z();
