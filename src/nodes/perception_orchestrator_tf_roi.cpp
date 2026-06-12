@@ -271,11 +271,7 @@ void PerceptionOrchestratorNode::processRefineGraspedWithFkRoi(
     cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
     cfg.debug_refine_grasped_roi_input_enabled = debug_refine_grasped_roi_input_enabled_.load();
     cfg.object_class = object_class_;
-    cfg.pose_fusion.enabled = refine_grasped_pose_fusion_.enabled;
-    cfg.pose_fusion.mode = refine_grasped_pose_fusion_.mode;
-    cfg.pose_fusion.max_translation_jump_m = refine_grasped_pose_fusion_.max_translation_jump_m;
-    cfg.pose_fusion.max_z_delta_m = refine_grasped_pose_fusion_.max_z_delta_m;
-    cfg.pose_fusion.debug_log = refine_grasped_pose_fusion_.debug_log;
+    cfg.pose_fusion = refine_grasped_pose_fusion_;
 
     auto rt = makeRefineFlowRuntime();
     rt.upsert_block = [this, &run_request, cloud](Block & block, std::string & assigned_id, std::string & reason) {

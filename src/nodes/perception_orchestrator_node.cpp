@@ -59,12 +59,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_grasped_segmentation_timeout_s_ = startup.refine_grasped_segmentation_timeout_s;
     refine_grasped_use_black_bg_ = startup.refine_grasped_use_black_bg;
     refine_grasped_blur_kernel_size_ = startup.refine_grasped_blur_kernel_size;
-    refine_grasped_pose_fusion_.enabled = startup.refine_grasped_pose_fusion.enabled;
-    refine_grasped_pose_fusion_.mode = startup.refine_grasped_pose_fusion.mode;
-    refine_grasped_pose_fusion_.max_translation_jump_m =
-      startup.refine_grasped_pose_fusion.max_translation_jump_m;
-    refine_grasped_pose_fusion_.max_z_delta_m = startup.refine_grasped_pose_fusion.max_z_delta_m;
-    refine_grasped_pose_fusion_.debug_log = startup.refine_grasped_pose_fusion.debug_log;
+    refine_grasped_pose_fusion_ = startup.refine_grasped_pose_fusion;
     refine_block_use_pose_roi_ = startup.refine_block_use_pose_roi;
     refine_block_min_depth_m_ = startup.refine_block_min_depth_m;
     refine_block_max_depth_m_ = startup.refine_block_max_depth_m;

@@ -96,15 +96,6 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     uint32_t height{0};
   };
 
-  struct PoseFusionConfig
-  {
-    bool enabled{true};
-    std::string mode{"position_from_registration_orientation_from_fk"};
-    double max_translation_jump_m{0.35};
-    double max_z_delta_m{0.25};
-    bool debug_log{true};
-  };
-
   enum class PerceptionMode
   {
     kIdle,
@@ -389,5 +380,5 @@ private:
   double coarse_surface_square_ratio_thresh_{1.35};
   double coarse_front_center_offset_square_m_{0.45};
   double coarse_front_center_offset_rect_m_{0.30};
-  PoseFusionConfig refine_grasped_pose_fusion_;
+  cbpwm::PoseFusionConfig refine_grasped_pose_fusion_;
 };
