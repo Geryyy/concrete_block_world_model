@@ -16,6 +16,10 @@
 namespace cbp::world_model
 {
 
+// Refine flows register exactly one merged ROI mask, so the detection id is
+// a fixed convention rather than an index into a detection array.
+inline constexpr uint32_t kRefineDetectionId = 1U;
+
 struct PoseFusionConfig
 {
   bool enabled{true};

@@ -115,7 +115,7 @@ void processRefineGraspedWithFkRoi(
   std::string reg_reason;
   const auto t_reg_start = std::chrono::steady_clock::now();
   const bool registration_ok = rt.run_registration_sync(
-    1U,
+    kRefineDetectionId,
     *full_mask_msg,
     *cloud,
     cloud->header,
@@ -295,7 +295,7 @@ bool tryProcessRefineBlockWithPoseRoi(
   std::string reg_reason;
   const auto t_reg_start = std::chrono::steady_clock::now();
   const bool registration_ok = rt.run_registration_sync(
-    1U,
+    kRefineDetectionId,
     *full_mask_msg,
     *cloud,
     cloud->header,
