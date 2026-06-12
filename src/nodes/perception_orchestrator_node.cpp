@@ -54,18 +54,18 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_grasped_tcp_frame_ = startup.refine_grasped_tcp_frame;
     refine_grasped_camera_frame_ = startup.refine_grasped_camera_frame;
     refine_grasped_camera_info_topic_ = startup.refine_grasped_camera_info_topic;
-    refine_grasped_min_depth_m_ = startup.refine_grasped_min_depth_m;
-    refine_grasped_max_depth_m_ = startup.refine_grasped_max_depth_m;
-    refine_grasped_segmentation_timeout_s_ = startup.refine_grasped_segmentation_timeout_s;
-    refine_grasped_use_black_bg_ = startup.refine_grasped_use_black_bg;
-    refine_grasped_blur_kernel_size_ = startup.refine_grasped_blur_kernel_size;
+    refine_grasped_roi_cfg_.min_depth_m = startup.refine_grasped_min_depth_m;
+    refine_grasped_roi_cfg_.max_depth_m = startup.refine_grasped_max_depth_m;
+    refine_grasped_roi_cfg_.segmentation_timeout_s = startup.refine_grasped_segmentation_timeout_s;
+    refine_grasped_roi_cfg_.use_black_bg = startup.refine_grasped_use_black_bg;
+    refine_grasped_roi_cfg_.blur_kernel_size = startup.refine_grasped_blur_kernel_size;
     refine_grasped_pose_fusion_ = startup.refine_grasped_pose_fusion;
     refine_block_use_pose_roi_ = startup.refine_block_use_pose_roi;
-    refine_block_min_depth_m_ = startup.refine_block_min_depth_m;
-    refine_block_max_depth_m_ = startup.refine_block_max_depth_m;
-    refine_block_segmentation_timeout_s_ = startup.refine_block_segmentation_timeout_s;
-    refine_block_use_black_bg_ = startup.refine_block_use_black_bg;
-    refine_block_blur_kernel_size_ = startup.refine_block_blur_kernel_size;
+    refine_block_roi_cfg_.min_depth_m = startup.refine_block_min_depth_m;
+    refine_block_roi_cfg_.max_depth_m = startup.refine_block_max_depth_m;
+    refine_block_roi_cfg_.segmentation_timeout_s = startup.refine_block_segmentation_timeout_s;
+    refine_block_roi_cfg_.use_black_bg = startup.refine_block_use_black_bg;
+    refine_block_roi_cfg_.blur_kernel_size = startup.refine_block_blur_kernel_size;
     block_dimensions_m_ = startup.block_dimensions_m;
 
     constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
@@ -165,14 +165,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     T_tcp_block_.block<3, 3>(0, 0) = rot_tcp_block;
     T_tcp_block_.block<3, 1>(0, 3) = Eigen::Vector3d(tx, ty, tz);
 
-    roi_size_x_m_ = cbpwm::vectorComponent(
+    refine_grasped_roi_cfg_.roi_size_x_m = cbpwm::vectorComponent(
       get_logger(), startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
-    roi_size_y_m_ = cbpwm::vectorComponent(
+    refine_grasped_roi_cfg_.roi_size_y_m = cbpwm::vectorComponent(
       get_logger(), startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
-    refine_block_roi_size_x_m_ =
+    refine_block_roi_cfg_.roi_size_x_m =
       cbpwm::vectorComponent(
       get_logger(), startup.refine_block_roi_size_m, 0, 1.20, "refine_block.roi_size_m");
-    refine_block_roi_size_y_m_ =
+    refine_block_roi_cfg_.roi_size_y_m =
       cbpwm::vectorComponent(
       get_logger(), startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
 
@@ -313,14 +313,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         refine_grasped_tcp_frame_.c_str(),
         refine_grasped_camera_frame_.empty() ? "<image.header.frame_id>" : refine_grasped_camera_frame_.c_str(),
         refine_grasped_camera_info_topic_.c_str(),
-        roi_size_x_m_,
-        roi_size_y_m_);
+        refine_grasped_roi_cfg_.roi_size_x_m,
+        refine_grasped_roi_cfg_.roi_size_y_m);
       RCLCPP_INFO(
         get_logger(),
         "REFINE_GRASPED segmentation input: background=%s blur_kernel=%d seg_timeout=%.2fs",
-        refine_grasped_use_black_bg_ ? "black" : "blur",
-        refine_grasped_blur_kernel_size_,
-        refine_grasped_segmentation_timeout_s_);
+        refine_grasped_roi_cfg_.use_black_bg ? "black" : "blur",
+        refine_grasped_roi_cfg_.blur_kernel_size,
+        refine_grasped_roi_cfg_.segmentation_timeout_s);
       RCLCPP_INFO(
         get_logger(),
         "REFINE_GRASPED pose fusion: enabled=%s mode=%s max_jump=%.3fm max_z_delta=%.3fm debug_log=%s",
@@ -334,11 +334,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       RCLCPP_INFO(
         get_logger(),
         "REFINE_BLOCK pose+ROI enabled | roi_size=[%.2f, %.2f]m depth=[%.2f, %.2f]m seg_timeout=%.2fs",
-        refine_block_roi_size_x_m_,
-        refine_block_roi_size_y_m_,
-        refine_block_min_depth_m_,
-        refine_block_max_depth_m_,
-        refine_block_segmentation_timeout_s_);
+        refine_block_roi_cfg_.roi_size_x_m,
+        refine_block_roi_cfg_.roi_size_y_m,
+        refine_block_roi_cfg_.min_depth_m,
+        refine_block_roi_cfg_.max_depth_m,
+        refine_block_roi_cfg_.segmentation_timeout_s);
     }
 }
 

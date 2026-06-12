@@ -261,13 +261,7 @@ void PerceptionOrchestratorNode::processRefineGraspedWithFkRoi(
     req.registration_timeout_s = run_request.registration_timeout_s;
 
     cbpwm::RefineGraspedConfig cfg;
-    cfg.roi_cfg.roi_size_x_m = roi_size_x_m_;
-    cfg.roi_cfg.roi_size_y_m = roi_size_y_m_;
-    cfg.roi_cfg.min_depth_m = refine_grasped_min_depth_m_;
-    cfg.roi_cfg.max_depth_m = refine_grasped_max_depth_m_;
-    cfg.roi_cfg.segmentation_timeout_s = refine_grasped_segmentation_timeout_s_;
-    cfg.roi_cfg.use_black_bg = refine_grasped_use_black_bg_;
-    cfg.roi_cfg.blur_kernel_size = refine_grasped_blur_kernel_size_;
+    cfg.roi_cfg = refine_grasped_roi_cfg_;
     cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
     cfg.debug_refine_grasped_roi_input_enabled = debug_refine_grasped_roi_input_enabled_.load();
     cfg.object_class = object_class_;
@@ -305,13 +299,7 @@ bool PerceptionOrchestratorNode::tryProcessRefineBlockWithPoseRoi(
 
     cbpwm::RefineBlockConfig cfg;
     cfg.use_pose_roi = refine_block_use_pose_roi_;
-    cfg.roi_cfg.roi_size_x_m = refine_block_roi_size_x_m_;
-    cfg.roi_cfg.roi_size_y_m = refine_block_roi_size_y_m_;
-    cfg.roi_cfg.min_depth_m = refine_block_min_depth_m_;
-    cfg.roi_cfg.max_depth_m = refine_block_max_depth_m_;
-    cfg.roi_cfg.segmentation_timeout_s = refine_block_segmentation_timeout_s_;
-    cfg.roi_cfg.use_black_bg = refine_block_use_black_bg_;
-    cfg.roi_cfg.blur_kernel_size = refine_block_blur_kernel_size_;
+    cfg.roi_cfg = refine_block_roi_cfg_;
     cfg.refine_target_max_distance_m = runtime_cfg_.refine_target_max_distance_m;
     cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
 
