@@ -525,123 +525,13 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
 
       size_t accepted_count = 0;
       size_t rejected_count = 0;
-      int64_t cutout_sum_ms = 0;
-      int64_t coarse_sum_ms = 0;
-      int64_t registration_sum_ms = 0;
-      int64_t upsert_sum_ms = 0;
       int continuous_registration_attempts = 0;
-      std::vector<cbpwm::ContinuousMaskCandidate> candidates;
-      for (size_t i = 0; i < seg_res->detections.detections.size(); ++i) {
-        const auto & det = seg_res->detections.detections[i];
-        cv::Mat det_mask = extract_mask_roi(full_mask, det);
-        cv::Mat binary_mask;
-        cv::threshold(det_mask, binary_mask, 0, 255, cv::THRESH_BINARY);
+      ContinuousStageTimings timings;
+      const Eigen::Vector3d * camera_origin =
+        have_camera_origin ? &camera_origin_world : nullptr;
 
-        const auto quality = cbpwm::evaluateContinuousMaskQuality(
-          binary_mask,
-          det,
-          continuous_cfg_.min_mask_pixels,
-          continuous_cfg_.min_mask_fill_ratio);
-        cbpwm::logContinuousQuality(get_logger(), *get_clock(), i, det, quality);
-
-        if (!quality.accepted) {
-          ++rejected_count;
-          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous mask rejected: idx=%zu pixels=%d bbox_area=%d fill=%.3f reason=%s",
-            i,
-            quality.mask_pixels,
-            quality.bbox_area_px,
-            quality.fill_ratio,
-            quality.reason.c_str());
-          continue;
-        }
-
-        Block coarse_block;
-        std::string coarse_reason;
-        const auto mask_msg =
-          cv_bridge::CvImage(cloud->header, "mono8", binary_mask).toImageMsg();
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous cutout input: idx=%zu detection_id=%u mask_pixels=%d min_cutout_points=%d",
-          i,
-          static_cast<uint32_t>(i + 1U),
-          quality.mask_pixels,
-          continuous_cfg_.min_valid_cloud_points);
-
-        sensor_msgs::msg::PointCloud2 cutout_cloud;
-        std::string cutout_reason;
-        const auto t_cutout_start = std::chrono::steady_clock::now();
-        const bool got_cutout = extractMaskCutoutSync(
-          *mask_msg,
-          *cloud,
-          continuous_cfg_.cutout_timeout_s,
-          cutout_cloud,
-          cutout_reason);
-        cutout_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_cutout_start).count();
-        if (!got_cutout) {
-          ++rejected_count;
-          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous cutout rejected: idx=%zu pixels=%d fill=%.3f reason=%s",
-            i,
-            quality.mask_pixels,
-            quality.fill_ratio,
-            cutout_reason.c_str());
-          continue;
-        }
-
-        const auto t_coarse_start = std::chrono::steady_clock::now();
-        const bool coarse_ok = buildCoarseBlockFromCloudCentroid(
-          static_cast<uint32_t>(i + 1U),
-          *mask_msg,
-          cutout_cloud,
-          cutout_cloud.header,
-          have_camera_origin ? &camera_origin_world : nullptr,
-          coarse_block,
-          coarse_reason,
-          continuous_cfg_.min_valid_cloud_points);
-        coarse_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_coarse_start).count();
-        if (!coarse_ok) {
-          ++rejected_count;
-          cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous coarse pose rejected: idx=%zu pixels=%d fill=%.3f cutout_points=%u reason=%s",
-            i,
-            quality.mask_pixels,
-            quality.fill_ratio,
-            cutout_cloud.width * cutout_cloud.height,
-            coarse_reason.c_str());
-          continue;
-        }
-
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous fragment coarse pose: idx=%zu id=%s pos=[%.3f, %.3f, %.3f] cutout_points=%u reason=%s",
-          i,
-          coarse_block.id.c_str(),
-          coarse_block.pose.position.x,
-          coarse_block.pose.position.y,
-          coarse_block.pose.position.z,
-          cutout_cloud.width * cutout_cloud.height,
-          coarse_reason.c_str());
-
-        coarse_block.confidence = static_cast<float>(cbpwm::detectionConfidence(det));
-        coarse_block.last_seen = cloud->header.stamp;
-        candidates.push_back(
-          cbpwm::ContinuousMaskCandidate{
-            i,
-            binary_mask.clone(),
-            quality,
-            coarse_block,
-            cbpwm::detectionConfidence(det),
-            cutout_cloud.width * cutout_cloud.height});
-      }
+      const auto candidates = buildContinuousCandidates(
+        *seg_res, cloud, full_mask, camera_origin, timings, rejected_mask, rejected_count);
 
       const auto groups = cbpwm::groupContinuousCandidates(
         candidates,
@@ -653,197 +543,41 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       cv::Mat merged_mask_debug = cv::Mat::zeros(full_mask.size(), CV_8UC1);
       for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
         const auto & group = groups[group_index];
-        const int merged_pixels = cv::countNonZero(group.merged_mask);
-        int source_pixels = 0;
-        uint32_t source_cutout_points = 0;
-        double max_confidence = 0.0;
-        std::string fragment_indices;
-        for (const size_t candidate_index : group.candidate_indices) {
-          const auto & candidate = candidates.at(candidate_index);
-          source_pixels += candidate.quality.mask_pixels;
-          source_cutout_points += candidate.cutout_points;
-          max_confidence = std::max(max_confidence, candidate.confidence);
-          if (!fragment_indices.empty()) {
-            fragment_indices += ",";
-          }
-          fragment_indices += std::to_string(candidate.detection_index);
-        }
 
-        const auto mask_msg =
-          cv_bridge::CvImage(cloud->header, "mono8", group.merged_mask).toImageMsg();
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous merged cutout input: group=%zu fragments=[%s] merged_pixels=%d source_pixels=%d source_cutout_points=%u",
-          group_index,
-          fragment_indices.c_str(),
-          merged_pixels,
-          source_pixels,
-          source_cutout_points);
-
-        sensor_msgs::msg::PointCloud2 merged_cutout_cloud;
-        std::string cutout_reason;
-        const auto t_cutout_start = std::chrono::steady_clock::now();
-        const bool got_cutout = extractMaskCutoutSync(
-          *mask_msg,
-          *cloud,
-          continuous_cfg_.cutout_timeout_s,
-          merged_cutout_cloud,
-          cutout_reason);
-        cutout_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_cutout_start).count();
-        if (!got_cutout) {
+        cbpwm::BlockObservation observation;
+        if (!buildContinuousObservation(
+            group,
+            group_index,
+            candidates,
+            cloud,
+            camera_origin,
+            continuous_registration_attempts,
+            timings,
+            observation))
+        {
           ++rejected_count;
           cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous merged cutout rejected: group=%zu fragments=[%s] merged_pixels=%d reason=%s",
-            group_index,
-            fragment_indices.c_str(),
-            merged_pixels,
-            cutout_reason.c_str());
           continue;
-        }
-
-        Block coarse_block;
-        std::string coarse_reason;
-        const auto t_coarse_start = std::chrono::steady_clock::now();
-        const bool coarse_ok = buildCoarseBlockFromCloudCentroid(
-          static_cast<uint32_t>(group_index + 1U),
-          *mask_msg,
-          merged_cutout_cloud,
-          merged_cutout_cloud.header,
-          have_camera_origin ? &camera_origin_world : nullptr,
-          coarse_block,
-          coarse_reason,
-          continuous_cfg_.min_valid_cloud_points);
-        coarse_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_coarse_start).count();
-        if (!coarse_ok) {
-          ++rejected_count;
-          cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous merged coarse pose rejected: group=%zu fragments=[%s] merged_pixels=%d cutout_points=%u reason=%s",
-            group_index,
-            fragment_indices.c_str(),
-            merged_pixels,
-            merged_cutout_cloud.width * merged_cutout_cloud.height,
-            coarse_reason.c_str());
-          continue;
-        }
-
-        coarse_block.confidence = static_cast<float>(max_confidence);
-        coarse_block.last_seen = cloud->header.stamp;
-        Block block_to_upsert = coarse_block;
-        bool precise_pose_used = false;
-
-        if (continuous_cfg_.registration_enabled) {
-          if (!action_client_ || !action_client_->action_server_is_ready()) {
-            RCLCPP_WARN_THROTTLE(
-              get_logger(), *get_clock(), 2000,
-              "Continuous precise registration skipped: registration action unavailable.");
-          } else if (continuous_registration_attempts >= continuous_cfg_.registration_max_per_frame) {
-            RCLCPP_INFO_THROTTLE(
-              get_logger(), *get_clock(), 2000,
-              "Continuous precise registration skipped: group=%zu fragments=[%s] max_per_frame=%d reached.",
-              group_index,
-              fragment_indices.c_str(),
-              continuous_cfg_.registration_max_per_frame);
-          } else {
-            ++continuous_registration_attempts;
-            Block precise_block;
-            std::string registration_reason;
-            RCLCPP_INFO_THROTTLE(
-              get_logger(), *get_clock(), 1000,
-              "Continuous precise registration input: group=%zu fragments=[%s] merged_pixels=%d timeout=%.2fs",
-              group_index,
-              fragment_indices.c_str(),
-              merged_pixels,
-              continuous_cfg_.registration_timeout_s);
-            const auto t_registration_start = std::chrono::steady_clock::now();
-            const bool registration_ok = runRegistrationSync(
-              static_cast<uint32_t>(group_index + 1U),
-              *mask_msg,
-              *cloud,
-              cloud->header,
-              continuous_cfg_.registration_timeout_s,
-              precise_block,
-              registration_reason);
-            registration_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::steady_clock::now() - t_registration_start).count();
-
-            if (registration_ok) {
-              block_to_upsert = precise_block;
-              precise_pose_used = true;
-              RCLCPP_INFO_THROTTLE(
-                get_logger(), *get_clock(), 1000,
-                "Continuous precise registration accepted: group=%zu fragments=[%s] pos=[%.3f, %.3f, %.3f] confidence=%.3f",
-                group_index,
-                fragment_indices.c_str(),
-                precise_block.pose.position.x,
-                precise_block.pose.position.y,
-                precise_block.pose.position.z,
-                precise_block.confidence);
-            } else {
-              RCLCPP_WARN_THROTTLE(
-                get_logger(), *get_clock(), 2000,
-                "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
-                group_index,
-                fragment_indices.c_str(),
-                registration_reason.c_str());
-            }
-          }
         }
 
         std::string assigned_id;
         std::string upsert_reason;
-        bool upsert_ok = false;
-        auto assoc_cfg = associationConfig();
-        assoc_cfg.association_max_distance_m = continuous_cfg_.association_max_distance_m;
-        assoc_cfg.association_max_age_s = continuous_cfg_.association_max_age_s;
-        const auto t_upsert_start = std::chrono::steady_clock::now();
+        if (!applyContinuousObservation(
+            observation, cloud->header, timings, assigned_id, upsert_reason))
         {
-          std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-          upsert_ok = cbpwm::upsertRegisteredBlock(
-            persistent_world_,
-            world_block_counter_,
-            block_to_upsert,
-            cbpwm::OneShotMode::kSceneDiscovery,
-            "",
-            cloud->header,
-            *get_clock(),
-            assoc_cfg,
-            assigned_id,
-            upsert_reason);
-        }
-        upsert_sum_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_upsert_start).count();
-
-        if (!upsert_ok) {
           ++rejected_count;
           cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
           RCLCPP_INFO_THROTTLE(
             get_logger(), *get_clock(), 2000,
             "Continuous upsert rejected: group=%zu fragments=[%s] confidence=%.3f reason=%s",
             group_index,
-            fragment_indices.c_str(),
-            block_to_upsert.confidence,
+            cbpwm::fragmentIndices(group, candidates).c_str(),
+            observation.block.confidence,
             upsert_reason.c_str());
           continue;
         }
 
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous world-model upsert: group=%zu fragments=[%s] incoming=%s assigned=%s confidence=%.3f pose_status=%d",
-          group_index,
-          fragment_indices.c_str(),
-          block_to_upsert.id.c_str(),
-          assigned_id.c_str(),
-          block_to_upsert.confidence,
-          block_to_upsert.pose_status);
-
         ++accepted_count;
-        block_to_upsert.id = assigned_id;
         for (const size_t candidate_index : group.candidate_indices) {
           accepted_by_detection[candidates.at(candidate_index).detection_index] = true;
         }
@@ -851,14 +585,14 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         cv::bitwise_or(merged_mask_debug, group.merged_mask, merged_mask_debug);
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Continuous merged upsert accepted: group=%zu fragments=[%s] assigned=%s pose=%s merged_pixels=%d cutout_points=%u confidence=%.3f",
+          "Continuous observation accepted: group=%zu fragments=[%s] assigned=%s pose=%s mask_pixels=%d cutout_points=%u confidence=%.3f",
           group_index,
-          fragment_indices.c_str(),
+          cbpwm::fragmentIndices(group, candidates).c_str(),
           assigned_id.c_str(),
-          precise_pose_used ? "PRECISE" : "COARSE",
-          merged_pixels,
-          merged_cutout_cloud.width * merged_cutout_cloud.height,
-          block_to_upsert.confidence);
+          observation.precise ? "PRECISE" : "COARSE",
+          observation.mask_pixels,
+          observation.cutout_points,
+          observation.block.confidence);
       }
 
       if (continuous_merged_mask_pub_) {
@@ -891,10 +625,10 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       recordTiming(seg_ms, 0, 0, total_ms);
       publish_continuous_timing(
         static_cast<double>(seg_ms),
-        static_cast<double>(cutout_sum_ms),
-        static_cast<double>(coarse_sum_ms),
-        static_cast<double>(registration_sum_ms),
-        static_cast<double>(upsert_sum_ms),
+        static_cast<double>(timings.cutout_ms),
+        static_cast<double>(timings.coarse_ms),
+        static_cast<double>(timings.registration_ms),
+        static_cast<double>(timings.upsert_ms),
         static_cast<double>(total_ms),
         static_cast<double>(seg_res->detections.detections.size()),
         static_cast<double>(accepted_count),
@@ -906,10 +640,10 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         accepted_count,
         rejected_count,
         seg_ms,
-        cutout_sum_ms,
-        coarse_sum_ms,
-        registration_sum_ms,
-        upsert_sum_ms,
+        timings.cutout_ms,
+        timings.coarse_ms,
+        timings.registration_ms,
+        timings.upsert_ms,
         total_ms);
       resetBusy();
     } catch (const std::exception & e) {
@@ -917,6 +651,324 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       publishPersistentWorld(cloud->header);
       resetBusy();
     }
+  }
+
+std::vector<cbpwm::ContinuousMaskCandidate> PerceptionOrchestratorNode::buildContinuousCandidates(
+    const SegmentSrv::Response & seg_res,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const cv::Mat & full_mask,
+    const Eigen::Vector3d * camera_origin_world,
+    ContinuousStageTimings & timings,
+    cv::Mat & rejected_mask,
+    size_t & rejected_count)
+  {
+    std::vector<cbpwm::ContinuousMaskCandidate> candidates;
+    for (size_t i = 0; i < seg_res.detections.detections.size(); ++i) {
+      const auto & det = seg_res.detections.detections[i];
+      cv::Mat det_mask = extract_mask_roi(full_mask, det);
+      cv::Mat binary_mask;
+      cv::threshold(det_mask, binary_mask, 0, 255, cv::THRESH_BINARY);
+
+      const auto quality = cbpwm::evaluateContinuousMaskQuality(
+        binary_mask,
+        det,
+        continuous_cfg_.min_mask_pixels,
+        continuous_cfg_.min_mask_fill_ratio);
+      cbpwm::logContinuousQuality(get_logger(), *get_clock(), i, det, quality);
+
+      if (!quality.accepted) {
+        ++rejected_count;
+        cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous mask rejected: idx=%zu pixels=%d bbox_area=%d fill=%.3f reason=%s",
+          i,
+          quality.mask_pixels,
+          quality.bbox_area_px,
+          quality.fill_ratio,
+          quality.reason.c_str());
+        continue;
+      }
+
+      Block coarse_block;
+      std::string coarse_reason;
+      const auto mask_msg =
+        cv_bridge::CvImage(cloud->header, "mono8", binary_mask).toImageMsg();
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous cutout input: idx=%zu detection_id=%u mask_pixels=%d min_cutout_points=%d",
+        i,
+        static_cast<uint32_t>(i + 1U),
+        quality.mask_pixels,
+        continuous_cfg_.min_valid_cloud_points);
+
+      sensor_msgs::msg::PointCloud2 cutout_cloud;
+      std::string cutout_reason;
+      const auto t_cutout_start = std::chrono::steady_clock::now();
+      const bool got_cutout = extractMaskCutoutSync(
+        *mask_msg,
+        *cloud,
+        continuous_cfg_.cutout_timeout_s,
+        cutout_cloud,
+        cutout_reason);
+      timings.cutout_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t_cutout_start).count();
+      if (!got_cutout) {
+        ++rejected_count;
+        cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous cutout rejected: idx=%zu pixels=%d fill=%.3f reason=%s",
+          i,
+          quality.mask_pixels,
+          quality.fill_ratio,
+          cutout_reason.c_str());
+        continue;
+      }
+
+      const auto t_coarse_start = std::chrono::steady_clock::now();
+      const bool coarse_ok = buildCoarseBlockFromCloudCentroid(
+        static_cast<uint32_t>(i + 1U),
+        *mask_msg,
+        cutout_cloud,
+        cutout_cloud.header,
+        camera_origin_world,
+        coarse_block,
+        coarse_reason,
+        continuous_cfg_.min_valid_cloud_points);
+      timings.coarse_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t_coarse_start).count();
+      if (!coarse_ok) {
+        ++rejected_count;
+        cv::bitwise_or(rejected_mask, binary_mask, rejected_mask);
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous coarse pose rejected: idx=%zu pixels=%d fill=%.3f cutout_points=%u reason=%s",
+          i,
+          quality.mask_pixels,
+          quality.fill_ratio,
+          cutout_cloud.width * cutout_cloud.height,
+          coarse_reason.c_str());
+        continue;
+      }
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous fragment coarse pose: idx=%zu id=%s pos=[%.3f, %.3f, %.3f] cutout_points=%u reason=%s",
+        i,
+        coarse_block.id.c_str(),
+        coarse_block.pose.position.x,
+        coarse_block.pose.position.y,
+        coarse_block.pose.position.z,
+        cutout_cloud.width * cutout_cloud.height,
+        coarse_reason.c_str());
+
+      coarse_block.confidence = static_cast<float>(cbpwm::detectionConfidence(det));
+      coarse_block.last_seen = cloud->header.stamp;
+      candidates.push_back(
+        cbpwm::ContinuousMaskCandidate{
+          i,
+          binary_mask.clone(),
+          quality,
+          coarse_block,
+          cbpwm::detectionConfidence(det),
+          cutout_cloud.width * cutout_cloud.height});
+    }
+
+    return candidates;
+  }
+
+bool PerceptionOrchestratorNode::buildContinuousObservation(
+    const cbpwm::ContinuousMaskGroup & group,
+    size_t group_index,
+    const std::vector<cbpwm::ContinuousMaskCandidate> & candidates,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const Eigen::Vector3d * camera_origin_world,
+    int & registration_attempts,
+    ContinuousStageTimings & timings,
+    cbpwm::BlockObservation & out_observation)
+  {
+    const int merged_pixels = cv::countNonZero(group.merged_mask);
+    int source_pixels = 0;
+    uint32_t source_cutout_points = 0;
+    double max_confidence = 0.0;
+    for (const size_t candidate_index : group.candidate_indices) {
+      const auto & candidate = candidates.at(candidate_index);
+      source_pixels += candidate.quality.mask_pixels;
+      source_cutout_points += candidate.cutout_points;
+      max_confidence = std::max(max_confidence, candidate.confidence);
+    }
+    const std::string fragments = cbpwm::fragmentIndices(group, candidates);
+
+    const auto mask_msg =
+      cv_bridge::CvImage(cloud->header, "mono8", group.merged_mask).toImageMsg();
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Continuous merged cutout input: group=%zu fragments=[%s] merged_pixels=%d source_pixels=%d source_cutout_points=%u",
+      group_index,
+      fragments.c_str(),
+      merged_pixels,
+      source_pixels,
+      source_cutout_points);
+
+    sensor_msgs::msg::PointCloud2 merged_cutout_cloud;
+    std::string cutout_reason;
+    const auto t_cutout_start = std::chrono::steady_clock::now();
+    const bool got_cutout = extractMaskCutoutSync(
+      *mask_msg,
+      *cloud,
+      continuous_cfg_.cutout_timeout_s,
+      merged_cutout_cloud,
+      cutout_reason);
+    timings.cutout_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t_cutout_start).count();
+    if (!got_cutout) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Continuous merged cutout rejected: group=%zu fragments=[%s] merged_pixels=%d reason=%s",
+        group_index,
+        fragments.c_str(),
+        merged_pixels,
+        cutout_reason.c_str());
+      return false;
+    }
+
+    Block coarse_block;
+    std::string coarse_reason;
+    const auto t_coarse_start = std::chrono::steady_clock::now();
+    const bool coarse_ok = buildCoarseBlockFromCloudCentroid(
+      static_cast<uint32_t>(group_index + 1U),
+      *mask_msg,
+      merged_cutout_cloud,
+      merged_cutout_cloud.header,
+      camera_origin_world,
+      coarse_block,
+      coarse_reason,
+      continuous_cfg_.min_valid_cloud_points);
+    timings.coarse_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t_coarse_start).count();
+    if (!coarse_ok) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Continuous merged coarse pose rejected: group=%zu fragments=[%s] merged_pixels=%d cutout_points=%u reason=%s",
+        group_index,
+        fragments.c_str(),
+        merged_pixels,
+        merged_cutout_cloud.width * merged_cutout_cloud.height,
+        coarse_reason.c_str());
+      return false;
+    }
+
+    coarse_block.confidence = static_cast<float>(max_confidence);
+    coarse_block.last_seen = cloud->header.stamp;
+    out_observation.block = coarse_block;
+    out_observation.mask_pixels = merged_pixels;
+    out_observation.cutout_points = merged_cutout_cloud.width * merged_cutout_cloud.height;
+    out_observation.fragment_count = group.candidate_indices.size();
+    out_observation.precise = false;
+
+    if (continuous_cfg_.registration_enabled) {
+      if (!action_client_ || !action_client_->action_server_is_ready()) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous precise registration skipped: registration action unavailable.");
+      } else if (registration_attempts >= continuous_cfg_.registration_max_per_frame) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous precise registration skipped: group=%zu fragments=[%s] max_per_frame=%d reached.",
+          group_index,
+          fragments.c_str(),
+          continuous_cfg_.registration_max_per_frame);
+      } else {
+        ++registration_attempts;
+        Block precise_block;
+        std::string registration_reason;
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous precise registration input: group=%zu fragments=[%s] merged_pixels=%d timeout=%.2fs",
+          group_index,
+          fragments.c_str(),
+          merged_pixels,
+          continuous_cfg_.registration_timeout_s);
+        const auto t_registration_start = std::chrono::steady_clock::now();
+        const bool registration_ok = runRegistrationSync(
+          static_cast<uint32_t>(group_index + 1U),
+          *mask_msg,
+          *cloud,
+          cloud->header,
+          continuous_cfg_.registration_timeout_s,
+          precise_block,
+          registration_reason);
+        timings.registration_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_registration_start).count();
+
+        if (registration_ok) {
+          out_observation.block = precise_block;
+          out_observation.precise = true;
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "Continuous precise registration accepted: group=%zu fragments=[%s] pos=[%.3f, %.3f, %.3f] confidence=%.3f",
+            group_index,
+            fragments.c_str(),
+            precise_block.pose.position.x,
+            precise_block.pose.position.y,
+            precise_block.pose.position.z,
+            precise_block.confidence);
+        } else {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
+            group_index,
+            fragments.c_str(),
+            registration_reason.c_str());
+        }
+      }
+    }
+
+    return true;
+  }
+
+bool PerceptionOrchestratorNode::applyContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    ContinuousStageTimings & timings,
+    std::string & assigned_id,
+    std::string & reason)
+  {
+    auto assoc_cfg = associationConfig();
+    assoc_cfg.association_max_distance_m = continuous_cfg_.association_max_distance_m;
+    assoc_cfg.association_max_age_s = continuous_cfg_.association_max_age_s;
+
+    Block block_to_upsert = observation.block;
+    bool upsert_ok = false;
+    const auto t_upsert_start = std::chrono::steady_clock::now();
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      upsert_ok = cbpwm::upsertRegisteredBlock(
+        persistent_world_,
+        world_block_counter_,
+        block_to_upsert,
+        cbpwm::OneShotMode::kSceneDiscovery,
+        "",
+        header,
+        *get_clock(),
+        assoc_cfg,
+        assigned_id,
+        reason);
+    }
+    timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t_upsert_start).count();
+
+    if (upsert_ok) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
+        observation.block.id.c_str(),
+        assigned_id.c_str(),
+        block_to_upsert.confidence,
+        block_to_upsert.pose_status);
+    }
+    return upsert_ok;
   }
 
 void PerceptionOrchestratorNode::processFrame(

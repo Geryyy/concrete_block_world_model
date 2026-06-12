@@ -46,6 +46,7 @@
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
+#include "concrete_block_world_model/world_model/continuous_perception.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
@@ -116,6 +117,14 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
     double association_max_age_s{20.0};
+  };
+
+  struct ContinuousStageTimings
+  {
+    int64_t cutout_ms{0};
+    int64_t coarse_ms{0};
+    int64_t registration_ms{0};
+    int64_t upsert_ms{0};
   };
 
   struct RuntimeConfig
@@ -266,6 +275,31 @@ private:
   void processContinuousFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
+  std::vector<cbpwm::ContinuousMaskCandidate> buildContinuousCandidates(
+    const SegmentSrv::Response & seg_res,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const cv::Mat & full_mask,
+    const Eigen::Vector3d * camera_origin_world,
+    ContinuousStageTimings & timings,
+    cv::Mat & rejected_mask,
+    size_t & rejected_count);
+  bool buildContinuousObservation(
+    const cbpwm::ContinuousMaskGroup & group,
+    size_t group_index,
+    const std::vector<cbpwm::ContinuousMaskCandidate> & candidates,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const Eigen::Vector3d * camera_origin_world,
+    int & registration_attempts,
+    ContinuousStageTimings & timings,
+    cbpwm::BlockObservation & out_observation);
+  // World-update seam for the continuous stream: a future probabilistic
+  // filter replaces this association + overwrite-upsert.
+  bool applyContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    ContinuousStageTimings & timings,
+    std::string & assigned_id,
+    std::string & reason);
   void processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
