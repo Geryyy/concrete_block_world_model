@@ -35,7 +35,6 @@ add_executable(world_model_node
   src/utils/block_utils.cpp
   src/utils/coarse_pose_utils.cpp
   src/utils/img_utils.cpp
-  src/utils/visu_utils.cpp
   src/utils/world_model_utils.cpp
   src/world_model/block_filter.cpp
   src/world_model/config_loader.cpp
