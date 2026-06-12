@@ -54,8 +54,6 @@ def generate_launch_description():
                     ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
                     ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
-                    ("debug/registration_cutout", "/cbp/debug/registration_cutout"),
-                    ("debug/registration_template", "/cbp/debug/registration_template"),
                     ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
                     ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
                     ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
