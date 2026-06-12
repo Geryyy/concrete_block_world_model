@@ -26,6 +26,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_executable(world_model_node
+  src/nodes/perception_orchestrator_continuous.cpp
   src/nodes/perception_orchestrator_core.cpp
   src/nodes/perception_orchestrator_node.cpp
   src/nodes/perception_orchestrator_pipeline.cpp
