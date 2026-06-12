@@ -372,6 +372,37 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_association_max_age_s = node.declare_parameter<double>(
     "continuous.association.max_age_s",
     20.0);
+  cfg.continuous_filtering_enabled = node.declare_parameter<bool>(
+    "continuous.filtering.enabled",
+    false);
+  cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s =
+    node.declare_parameter<double>(
+    "continuous.filtering.position_process_sigma_m_per_sqrt_s",
+    cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s);
+  cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s =
+    node.declare_parameter<double>(
+    "continuous.filtering.orientation_process_sigma_rad_per_sqrt_s",
+    cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s);
+  cfg.continuous_filtering.mahalanobis_gate_threshold =
+    node.declare_parameter<double>(
+    "continuous.filtering.mahalanobis_gate_threshold",
+    cfg.continuous_filtering.mahalanobis_gate_threshold);
+  cfg.continuous_filtering.confirmation_hits =
+    node.declare_parameter<int>(
+    "continuous.filtering.confirmation_hits",
+    cfg.continuous_filtering.confirmation_hits);
+  cfg.continuous_filtering.confirmation_window =
+    node.declare_parameter<int>(
+    "continuous.filtering.confirmation_window",
+    cfg.continuous_filtering.confirmation_window);
+  cfg.continuous_filtering.max_consecutive_rejections =
+    node.declare_parameter<int>(
+    "continuous.filtering.max_consecutive_rejections",
+    cfg.continuous_filtering.max_consecutive_rejections);
+  cfg.continuous_filtering.tentative_max_age_s =
+    node.declare_parameter<double>(
+    "continuous.filtering.tentative_max_age_s",
+    cfg.continuous_filtering.tentative_max_age_s);
   cfg.scene_discovery_coarse_fallback_enabled =
     node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
   cfg.scene_discovery_coarse_fallback_min_points =
@@ -507,6 +538,34 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
+  clamp_min(
+    cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s,
+    0.0,
+    "continuous.filtering.position_process_sigma_m_per_sqrt_s");
+  clamp_min(
+    cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s,
+    0.0,
+    "continuous.filtering.orientation_process_sigma_rad_per_sqrt_s");
+  clamp_min(
+    cfg.continuous_filtering.mahalanobis_gate_threshold,
+    0.01,
+    "continuous.filtering.mahalanobis_gate_threshold");
+  clamp_min_i(
+    cfg.continuous_filtering.confirmation_hits,
+    1,
+    "continuous.filtering.confirmation_hits");
+  clamp_min_i(
+    cfg.continuous_filtering.confirmation_window,
+    cfg.continuous_filtering.confirmation_hits,
+    "continuous.filtering.confirmation_window");
+  clamp_min_i(
+    cfg.continuous_filtering.max_consecutive_rejections,
+    1,
+    "continuous.filtering.max_consecutive_rejections");
+  clamp_min(
+    cfg.continuous_filtering.tentative_max_age_s,
+    0.1,
+    "continuous.filtering.tentative_max_age_s");
   if (cfg.continuous_min_mask_fill_ratio < 0.0 || cfg.continuous_min_mask_fill_ratio > 1.0) {
     RCLCPP_WARN(
       logger,

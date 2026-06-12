@@ -45,6 +45,7 @@
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
+#include "concrete_block_world_model/world_model/block_filter.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
 #include "concrete_block_world_model/world_model/continuous_perception.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
@@ -117,6 +118,8 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
     double association_max_age_s{20.0};
+    bool filtering_enabled{false};
+    cbpwm::BlockFilterConfig filtering;
   };
 
   struct ContinuousStageTimings
@@ -340,6 +343,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_rejected_pub_;
 
   std::unordered_map<std::string, Block> persistent_world_;
+  std::unordered_map<std::string, cbpwm::FilteredBlockTrack> continuous_tracks_;
   std::mutex persistent_world_mutex_;
   std::unordered_set<std::string> seeded_block_ids_;
 

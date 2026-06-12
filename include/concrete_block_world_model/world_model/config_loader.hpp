@@ -6,6 +6,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include "concrete_block_world_model/world_model/block_filter.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 
 namespace cbp::world_model
@@ -58,6 +59,8 @@ struct WorldModelConfig
   int continuous_registration_max_per_frame{1};
   double continuous_association_max_distance_m{0.8};
   double continuous_association_max_age_s{20.0};
+  bool continuous_filtering_enabled{false};
+  BlockFilterConfig continuous_filtering;
   bool scene_discovery_coarse_fallback_enabled{true};
   int scene_discovery_coarse_fallback_min_points{120};
   double coarse_surface_square_ratio_thresh{1.35};

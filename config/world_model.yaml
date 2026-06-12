@@ -90,6 +90,21 @@ world_model_node:
         # Coarse centroids can jump more than precise ICP poses when masks are partial.
         max_distance_m: 0.8
         max_age_s: 20.0
+      filtering:
+        # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
+        enabled: false
+        # Static-model random-walk process noise. Position/orientation covariance
+        # grows by sigma^2 * dt between accepted observations.
+        position_process_sigma_m_per_sqrt_s: 0.03
+        orientation_process_sigma_rad_per_sqrt_s: 0.05
+        # Chi-square gate for 3D position innovation. 7.81 ~= 95%.
+        mahalanobis_gate_threshold: 7.81
+        # Publish a new continuous track only after M hits inside the last N observations.
+        confirmation_hits: 2
+        confirmation_window: 3
+        # Treat repeated gated jumps as a genuinely moved/reappeared block.
+        max_consecutive_rejections: 3
+        tentative_max_age_s: 2.0
 
     # ----------------------------------
     # Registration gating

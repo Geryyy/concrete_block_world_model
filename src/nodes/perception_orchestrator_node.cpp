@@ -39,6 +39,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     continuous_cfg_.registration_max_per_frame = startup.continuous_registration_max_per_frame;
     continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
     continuous_cfg_.association_max_age_s = startup.continuous_association_max_age_s;
+    continuous_cfg_.filtering_enabled = startup.continuous_filtering_enabled;
+    continuous_cfg_.filtering = startup.continuous_filtering;
     perception_mode_.store(
       cbpwm::normalizeMode(startup.perception_mode) == "CONTINUOUS" ?
       PerceptionMode::kContinuous : PerceptionMode::kIdle);
@@ -287,7 +289,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm] continuous_registration[enabled=%s timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm] continuous_registration[enabled=%s timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs] continuous_filtering[enabled=%s gate=%.2f confirm=%d/%d reinit_after=%d tentative_max_age=%.1fs]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       continuous_cfg_.process_every_n_frames,
@@ -302,7 +304,13 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       continuous_cfg_.registration_timeout_s,
       continuous_cfg_.registration_max_per_frame,
       continuous_cfg_.association_max_distance_m,
-      continuous_cfg_.association_max_age_s);
+      continuous_cfg_.association_max_age_s,
+      continuous_cfg_.filtering_enabled ? "true" : "false",
+      continuous_cfg_.filtering.mahalanobis_gate_threshold,
+      continuous_cfg_.filtering.confirmation_hits,
+      continuous_cfg_.filtering.confirmation_window,
+      continuous_cfg_.filtering.max_consecutive_rejections,
+      continuous_cfg_.filtering.tentative_max_age_s);
     if (refine_grasped_use_fk_roi_) {
       WM_LOG(
         get_logger(),
@@ -381,6 +389,10 @@ void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelCo
       block.last_seen = stamp;
       setDefaultPoseCovariance(block);
       persistent_world_[block.id] = block;
+      continuous_tracks_[block.id] = cbpwm::initializeTrack(
+        cbpwm::BlockObservation{block, 0, 0, 1U, block.pose_status == Block::POSE_PRECISE},
+        stamp.seconds(),
+        continuous_cfg_.filtering);
       seeded_block_ids_.insert(block.id);
     }
   }

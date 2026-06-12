@@ -565,19 +565,203 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
     Block block_to_upsert = observation.block;
     bool upsert_ok = false;
     const auto t_upsert_start = std::chrono::steady_clock::now();
+    if (!continuous_cfg_.filtering_enabled) {
+      {
+        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+        upsert_ok = cbpwm::upsertRegisteredBlock(
+          persistent_world_,
+          world_block_counter_,
+          block_to_upsert,
+          cbpwm::OneShotMode::kSceneDiscovery,
+          "",
+          header,
+          *get_clock(),
+          assoc_cfg,
+          assigned_id,
+          reason);
+      }
+      timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t_upsert_start).count();
+
+      if (upsert_ok) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
+          observation.block.id.c_str(),
+          assigned_id.c_str(),
+          block_to_upsert.confidence,
+          block_to_upsert.pose_status);
+      }
+      return upsert_ok;
+    }
+
+    const rclcpp::Time now_stamp(header.stamp, get_clock()->get_clock_type());
+    const double now_s = now_stamp.seconds();
     {
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-      upsert_ok = cbpwm::upsertRegisteredBlock(
-        persistent_world_,
-        world_block_counter_,
-        block_to_upsert,
-        cbpwm::OneShotMode::kSceneDiscovery,
-        "",
-        header,
-        *get_clock(),
-        assoc_cfg,
-        assigned_id,
+
+      for (auto it = continuous_tracks_.begin(); it != continuous_tracks_.end();) {
+        if (it->second.state == cbpwm::FilteredBlockTrackState::kTentative &&
+          (now_s - it->second.first_update_s) > continuous_cfg_.filtering.tentative_max_age_s)
+        {
+          persistent_world_.erase(it->first);
+          it = continuous_tracks_.erase(it);
+          continue;
+        }
+        ++it;
+      }
+
+      double best_score = std::numeric_limits<double>::infinity();
+      bool best_has_track = false;
+      for (const auto & kv : continuous_tracks_) {
+        auto predicted = kv.second;
+        cbpwm::predict(
+          predicted,
+          now_s - predicted.last_update_s,
+          continuous_cfg_.filtering);
+        const double d2 = cbpwm::mahalanobisDistanceSquared(predicted, observation);
+        if (d2 <= continuous_cfg_.filtering.mahalanobis_gate_threshold && d2 < best_score) {
+          best_score = d2;
+          assigned_id = kv.first;
+          best_has_track = true;
+        }
+      }
+
+      if (!best_has_track) {
+        for (const auto & kv : persistent_world_) {
+          if (continuous_tracks_.count(kv.first) > 0U) {
+            continue;
+          }
+          const rclcpp::Time seen(kv.second.last_seen, get_clock()->get_clock_type());
+          if ((now_stamp - seen).seconds() > assoc_cfg.association_max_age_s) {
+            continue;
+          }
+          const double dist = cbpwm::blockDistance(observation.block, kv.second);
+          if (dist <= assoc_cfg.association_max_distance_m && dist < best_score) {
+            best_score = dist;
+            assigned_id = kv.first;
+          }
+        }
+      }
+
+      if (!assigned_id.empty()) {
+        const auto world_it = persistent_world_.find(assigned_id);
+        if (world_it != persistent_world_.end() && world_it->second.task_status == Block::TASK_MOVE) {
+          reason = "continuous filtering skipped TASK_MOVE block";
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Continuous filtering skipped TASK_MOVE block: assigned=%s incoming=%s",
+            assigned_id.c_str(),
+            observation.block.id.c_str());
+          timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t_upsert_start).count();
+          return false;
+        }
+      }
+
+      if (assigned_id.empty()) {
+        ++world_block_counter_;
+        assigned_id = "wm_block_" + std::to_string(world_block_counter_);
+        auto track = cbpwm::initializeTrack(observation, now_s, continuous_cfg_.filtering);
+        continuous_tracks_[assigned_id] = track;
+        reason = "tentative track created";
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous filtering tentative track: assigned=%s incoming=%s hits=%zu/%d",
+          assigned_id.c_str(),
+          observation.block.id.c_str(),
+          track.hit_history.size(),
+          continuous_cfg_.filtering.confirmation_hits);
+        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_upsert_start).count();
+        return false;
+      }
+
+      auto track_it = continuous_tracks_.find(assigned_id);
+      if (track_it == continuous_tracks_.end()) {
+        const auto world_it = persistent_world_.find(assigned_id);
+        if (world_it != persistent_world_.end()) {
+          cbpwm::BlockObservation seed_obs;
+          seed_obs.block = world_it->second;
+          seed_obs.precise = world_it->second.pose_status == Block::POSE_PRECISE;
+          track_it = continuous_tracks_.emplace(
+            assigned_id,
+            cbpwm::initializeTrack(seed_obs, now_s, continuous_cfg_.filtering)).first;
+        } else {
+          track_it = continuous_tracks_.emplace(
+            assigned_id,
+            cbpwm::initializeTrack(observation, now_s, continuous_cfg_.filtering)).first;
+        }
+      }
+
+      cbpwm::predict(
+        track_it->second,
+        now_s - track_it->second.last_update_s,
+        continuous_cfg_.filtering);
+      const bool update_ok = cbpwm::gateAndUpdate(
+        track_it->second,
+        observation,
+        continuous_cfg_.filtering,
         reason);
+      if (!update_ok) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous filtering rejected: assigned=%s incoming=%s reason=%s",
+          assigned_id.c_str(),
+          observation.block.id.c_str(),
+          reason.c_str());
+        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_upsert_start).count();
+        return false;
+      }
+      track_it->second.last_update_s = now_s;
+
+      const bool confirmed =
+        track_it->second.state == cbpwm::FilteredBlockTrackState::kConfirmed;
+      if (!confirmed) {
+        reason = "tentative track not yet confirmed";
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Continuous filtering tentative update: assigned=%s incoming=%s history=%zu/%d",
+          assigned_id.c_str(),
+          observation.block.id.c_str(),
+          track_it->second.hit_history.size(),
+          continuous_cfg_.filtering.confirmation_hits);
+        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - t_upsert_start).count();
+        return false;
+      }
+
+      block_to_upsert = cbpwm::toBlockMsg(track_it->second, observation.block);
+      block_to_upsert.id = assigned_id;
+      block_to_upsert.last_seen = header.stamp;
+      const auto world_it = persistent_world_.find(assigned_id);
+      if (world_it != persistent_world_.end()) {
+        if (rclcpp::Time(observation.block.last_seen, get_clock()->get_clock_type()) <
+          rclcpp::Time(world_it->second.last_seen, get_clock()->get_clock_type()))
+        {
+          reason = "stale update (incoming older than stored state)";
+          timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t_upsert_start).count();
+          return false;
+        }
+        if (world_it->second.task_status != Block::TASK_UNKNOWN) {
+          block_to_upsert.task_status = world_it->second.task_status;
+        }
+        if (world_it->second.pose_status == Block::POSE_PRECISE || observation.precise) {
+          block_to_upsert.pose_status = Block::POSE_PRECISE;
+        }
+      } else {
+        block_to_upsert.task_status = Block::TASK_FREE;
+      }
+      if (block_to_upsert.pose_status == Block::POSE_UNKNOWN) {
+        block_to_upsert.pose_status =
+          observation.precise ? Block::POSE_PRECISE : Block::POSE_COARSE;
+      }
+
+      persistent_world_[assigned_id] = block_to_upsert;
+      upsert_ok = true;
+      reason = "filtered update accepted";
     }
     timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - t_upsert_start).count();
@@ -585,7 +769,7 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
     if (upsert_ok) {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "Continuous world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
+        "Continuous filtered world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
         observation.block.id.c_str(),
         assigned_id.c_str(),
         block_to_upsert.confidence,

@@ -72,6 +72,7 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
           continue;
         }
         if ((now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s) {
+          continuous_tracks_.erase(it->first);
           it = persistent_world_.erase(it);
           continue;
         }
