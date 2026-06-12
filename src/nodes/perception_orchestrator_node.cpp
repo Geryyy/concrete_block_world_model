@@ -220,10 +220,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "/extract_mask_cutout",
       rmw_qos_profile_services_default,
       action_client_cb_group_);
-    register_srv_client_ = create_client<RegisterBlockSrv>(
-      "/register_block_pose",
-      rmw_qos_profile_services_default,
-      action_client_cb_group_);
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
       this, "register_block", action_client_cb_group_);
 

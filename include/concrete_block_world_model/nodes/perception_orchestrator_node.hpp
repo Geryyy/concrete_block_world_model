@@ -40,7 +40,6 @@
 #include "concrete_block_world_model_interfaces/srv/get_coarse_blocks.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
 #include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
-#include "concrete_block_perception_interfaces/srv/register_block.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
@@ -66,7 +65,6 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using GetCoarseSrv = concrete_block_world_model_interfaces::srv::GetCoarseBlocks;
   using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
   using ExtractMaskCutoutSrv = concrete_block_perception_interfaces::srv::ExtractMaskCutout;
-  using RegisterBlockSrv = concrete_block_perception_interfaces::srv::RegisterBlock;
   using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
   using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
@@ -279,7 +277,6 @@ private:
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
-  rclcpp::Client<RegisterBlockSrv>::SharedPtr register_srv_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
