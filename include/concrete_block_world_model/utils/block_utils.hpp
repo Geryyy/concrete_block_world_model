@@ -7,6 +7,9 @@
 std::string poseStatusToString(int status);
 std::string taskStatusToString(int status);
 
+bool isKnownPoseStatus(int status);
+bool isKnownTaskStatus(int status);
+
 double poseDistance(
   const geometry_msgs::msg::Pose & a,
   const geometry_msgs::msg::Pose & b);

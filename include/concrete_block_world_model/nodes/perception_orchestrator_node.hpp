@@ -232,7 +232,6 @@ private:
   void handleGetPlanningScene(
     const std::shared_ptr<GetPlanningSceneSrv::Request> request,
     std::shared_ptr<GetPlanningSceneSrv::Response> response);
-  static bool isKnownTaskStatus(int32_t task_status);
   void handleSetBlockTaskStatus(
     const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
     std::shared_ptr<SetBlockTaskStatusSrv::Response> response);

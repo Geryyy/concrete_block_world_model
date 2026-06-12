@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include <yaml-cpp/yaml.h>
 
 namespace cbp::world_model
@@ -70,22 +71,6 @@ int parseTaskStatus(const YAML::Node & node, int fallback)
     }
   }
   return fallback;
-}
-
-bool isKnownPoseStatus(int value)
-{
-  return value == Block::POSE_UNKNOWN ||
-         value == Block::POSE_COARSE ||
-         value == Block::POSE_PRECISE;
-}
-
-bool isKnownTaskStatus(int value)
-{
-  return value == Block::TASK_UNKNOWN ||
-         value == Block::TASK_FREE ||
-         value == Block::TASK_MOVE ||
-         value == Block::TASK_PLACED ||
-         value == Block::TASK_REMOVED;
 }
 
 std::vector<InitialBlockConfig> parseInitialBlocksYaml(

@@ -37,6 +37,24 @@ std::string taskStatusToString(int status)
 }
 
 
+bool isKnownPoseStatus(int status)
+{
+  return status == Block::POSE_UNKNOWN ||
+         status == Block::POSE_COARSE ||
+         status == Block::POSE_PRECISE;
+}
+
+
+bool isKnownTaskStatus(int status)
+{
+  return status == Block::TASK_UNKNOWN ||
+         status == Block::TASK_FREE ||
+         status == Block::TASK_MOVE ||
+         status == Block::TASK_PLACED ||
+         status == Block::TASK_REMOVED;
+}
+
+
 double poseDistance(
   const geometry_msgs::msg::Pose & a,
   const geometry_msgs::msg::Pose & b)

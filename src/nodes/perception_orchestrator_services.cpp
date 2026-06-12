@@ -1,5 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
 void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
@@ -116,15 +117,6 @@ void PerceptionOrchestratorNode::handleGetPlanningScene(
       response->scene.objects.size(),
       response->scene.header.stamp.sec,
       response->scene.header.stamp.nanosec);
-  }
-
-bool PerceptionOrchestratorNode::isKnownTaskStatus(int32_t task_status)
-  {
-    return task_status == Block::TASK_UNKNOWN ||
-           task_status == Block::TASK_FREE ||
-           task_status == Block::TASK_MOVE ||
-           task_status == Block::TASK_PLACED ||
-           task_status == Block::TASK_REMOVED;
   }
 
 void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
