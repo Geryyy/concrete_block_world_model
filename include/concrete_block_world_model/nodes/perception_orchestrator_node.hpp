@@ -45,6 +45,7 @@
 #include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
+#include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
@@ -138,6 +139,7 @@ private:
   void resetPerfCounters();
   std::string resolveGraspedBlockId();
   cbpwm::AssociationConfig associationConfig() const;
+  cbpwm::CoarsePoseConfig coarsePoseConfig(int min_points_override = -1) const;
   bool buildCoarseBlockFromMaskAndCloud(
     uint32_t detection_id,
     const sensor_msgs::msg::Image & mask_msg,

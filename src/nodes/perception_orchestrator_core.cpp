@@ -178,6 +178,18 @@ void PerceptionOrchestratorNode::recordTiming(int64_t seg_ms, int64_t track_ms, 
       static_cast<unsigned long long>(dropped_sync_frames_.load()));
   }
 
+cbpwm::CoarsePoseConfig PerceptionOrchestratorNode::coarsePoseConfig(int min_points_override) const
+  {
+    cbpwm::CoarsePoseConfig cfg;
+    cfg.min_points =
+      min_points_override > 0 ? min_points_override : scene_discovery_coarse_fallback_min_points_;
+    cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
+    cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
+    cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;
+    cfg.min_confidence = std::max(0.3F, static_cast<float>(runtime_cfg_.min_update_confidence));
+    return cfg;
+  }
+
 bool PerceptionOrchestratorNode::buildCoarseBlockFromMaskAndCloud(
     uint32_t detection_id,
     const sensor_msgs::msg::Image & mask_msg,
@@ -193,14 +205,8 @@ bool PerceptionOrchestratorNode::buildCoarseBlockFromMaskAndCloud(
     in.mask = toCvMono(mask_msg);
     in.camera_origin_world = camera_origin_world;
 
-    cbpwm::CoarsePoseConfig cfg;
-    cfg.min_points = scene_discovery_coarse_fallback_min_points_;
-    cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
-    cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
-    cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;
-    cfg.min_confidence = std::max(0.3F, static_cast<float>(runtime_cfg_.min_update_confidence));
-
-    return cbpwm::buildCoarseBlockFromOrganizedCloud(in, cloud_msg, cfg, out_block, reason);
+    return cbpwm::buildCoarseBlockFromOrganizedCloud(
+      in, cloud_msg, coarsePoseConfig(), out_block, reason);
   }
 
 bool PerceptionOrchestratorNode::buildCoarseBlockFromCloudCentroid(
@@ -219,15 +225,8 @@ bool PerceptionOrchestratorNode::buildCoarseBlockFromCloudCentroid(
     in.mask = toCvMono(mask_msg);
     in.camera_origin_world = camera_origin_world;
 
-    cbpwm::CoarsePoseConfig cfg;
-    cfg.min_points =
-      min_points_override > 0 ? min_points_override : scene_discovery_coarse_fallback_min_points_;
-    cfg.square_ratio_thresh = coarse_surface_square_ratio_thresh_;
-    cfg.front_center_offset_square_m = coarse_front_center_offset_square_m_;
-    cfg.front_center_offset_rect_m = coarse_front_center_offset_rect_m_;
-    cfg.min_confidence = std::max(0.3F, static_cast<float>(runtime_cfg_.min_update_confidence));
-
-    return cbpwm::buildCoarseBlockFromCutoutCloud(in, cutout_cloud_msg, cfg, out_block, reason);
+    return cbpwm::buildCoarseBlockFromCutoutCloud(
+      in, cutout_cloud_msg, coarsePoseConfig(min_points_override), out_block, reason);
   }
 
 bool PerceptionOrchestratorNode::extractMaskCutoutSync(
