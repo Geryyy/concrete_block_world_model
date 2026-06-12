@@ -37,6 +37,7 @@ add_executable(world_model_node
   src/utils/visu_utils.cpp
   src/utils/world_model_utils.cpp
   src/world_model/config_loader.cpp
+  src/world_model/continuous_perception.cpp
   src/world_model/refine_flow.cpp
   src/world_model/registration_flow.cpp
   src/world_model/roi_processing.cpp
