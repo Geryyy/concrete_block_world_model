@@ -110,6 +110,28 @@ if(BUILD_TESTING)
       visualization_msgs
     )
   endif()
+
+  ament_add_gtest(test_block_filter
+    test/test_block_filter.cpp
+    src/world_model/block_filter.cpp
+  )
+  if(TARGET test_block_filter)
+    target_include_directories(test_block_filter PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${OpenCV_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_block_filter
+      Eigen3::Eigen
+      ${OpenCV_LIBS}
+    )
+    ament_target_dependencies(test_block_filter
+      concrete_block_world_model_interfaces
+      geometry_msgs
+      rclcpp
+      vision_msgs
+    )
+  endif()
 endif()
 
 ament_package()
