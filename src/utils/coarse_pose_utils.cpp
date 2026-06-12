@@ -142,6 +142,7 @@ void fillCoarseBlock(
   out_block.last_seen = header.stamp;
   out_block.pose_status = Block::POSE_COARSE;
   out_block.task_status = Block::TASK_FREE;
+  setDiagonalPoseCovariance(out_block, kCoarsePositionSigmaM, kCoarseOrientationSigmaRad);
 }
 
 }  // namespace

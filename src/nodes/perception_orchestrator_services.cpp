@@ -247,6 +247,7 @@ void PerceptionOrchestratorNode::handleUpsertBlock(
     block.task_status = request->task_status;
     block.confidence = request->confidence;
     block.last_seen = now();
+    setDefaultPoseCovariance(block);
 
     {
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);

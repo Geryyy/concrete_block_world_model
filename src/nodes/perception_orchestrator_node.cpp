@@ -1,5 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
 
 #include <tf2/LinearMath/Quaternion.h>
@@ -378,6 +379,7 @@ void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelCo
       block.pose.orientation.w = quat.w();
       block.confidence = static_cast<float>(cfg_block.confidence);
       block.last_seen = stamp;
+      setDefaultPoseCovariance(block);
       persistent_world_[block.id] = block;
       seeded_block_ids_.insert(block.id);
     }

@@ -67,6 +67,28 @@ bool isAutoAssignedBlockId(const std::string & id)
 }
 
 
+void setDiagonalPoseCovariance(Block & block, double sigma_pos_m, double sigma_rot_rad)
+{
+  block.pose_covariance.fill(0.0);
+  const double var_pos = sigma_pos_m * sigma_pos_m;
+  const double var_rot = sigma_rot_rad * sigma_rot_rad;
+  for (size_t i = 0; i < 3; ++i) {
+    block.pose_covariance[i * 6 + i] = var_pos;
+    block.pose_covariance[(i + 3) * 6 + (i + 3)] = var_rot;
+  }
+}
+
+
+void setDefaultPoseCovariance(Block & block)
+{
+  if (block.pose_status == Block::POSE_PRECISE) {
+    setDiagonalPoseCovariance(block, kPrecisePositionSigmaMinM, kPreciseOrientationSigmaRad);
+  } else {
+    setDiagonalPoseCovariance(block, kCoarsePositionSigmaM, kCoarseOrientationSigmaRad);
+  }
+}
+
+
 double poseDistance(
   const geometry_msgs::msg::Pose & a,
   const geometry_msgs::msg::Pose & b)

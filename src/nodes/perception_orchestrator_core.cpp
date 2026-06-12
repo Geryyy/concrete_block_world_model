@@ -387,6 +387,10 @@ bool PerceptionOrchestratorNode::runRegistrationSync(
     out_block.last_seen = header.stamp;
     out_block.pose_status = Block::POSE_PRECISE;
     out_block.task_status = Block::TASK_FREE;
+    setDiagonalPoseCovariance(
+      out_block,
+      std::max(kPrecisePositionSigmaMinM, 2.0 * action_result->rmse),
+      kPreciseOrientationSigmaRad);
     return true;
   }
 
