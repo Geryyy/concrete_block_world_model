@@ -113,6 +113,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_valid_cloud_points{120};
     cbpwm::ContinuousMaskMergeConfig mask_merge;
     bool registration_enabled{false};
+    bool registration_pose_prior_enabled{true};
     double registration_timeout_s{3.0};
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
@@ -190,7 +191,8 @@ private:
     double timeout_s,
     Block & out_block,
     std::string & reason,
-    const std::string & object_class_override = "");
+    const std::string & object_class_override = "",
+    const Block * pose_prior = nullptr);
   bool runSegmentationSync(
     const sensor_msgs::msg::Image & image,
     double timeout_s,
@@ -298,6 +300,10 @@ private:
     int & registration_attempts,
     ContinuousStageTimings & timings,
     cbpwm::BlockObservation & out_observation);
+  bool findContinuousRegistrationPrior(
+    const Block & coarse_block,
+    const std_msgs::msg::Header & header,
+    Block & out_prior);
   // World-update seam for the continuous stream: a future probabilistic
   // filter replaces this association + overwrite-upsert.
   bool applyContinuousObservation(

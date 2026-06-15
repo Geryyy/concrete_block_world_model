@@ -439,6 +439,41 @@ std::vector<cbpwm::ContinuousMaskCandidate> PerceptionOrchestratorNode::buildCon
     return candidates;
   }
 
+bool PerceptionOrchestratorNode::findContinuousRegistrationPrior(
+    const Block & coarse_block,
+    const std_msgs::msg::Header & header,
+    Block & out_prior)
+  {
+    const rclcpp::Time now_stamp(header.stamp, get_clock()->get_clock_type());
+    double best_distance = std::numeric_limits<double>::infinity();
+    bool found = false;
+
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (const auto & kv : persistent_world_) {
+      const auto & candidate = kv.second;
+      if (candidate.task_status == Block::TASK_MOVE ||
+        candidate.task_status == Block::TASK_REMOVED ||
+        candidate.pose_status == Block::POSE_UNKNOWN)
+      {
+        continue;
+      }
+
+      const rclcpp::Time seen(candidate.last_seen, get_clock()->get_clock_type());
+      if ((now_stamp - seen).seconds() > continuous_cfg_.association_max_age_s) {
+        continue;
+      }
+
+      const double distance = cbpwm::blockDistance(coarse_block, candidate);
+      if (distance <= continuous_cfg_.association_max_distance_m && distance < best_distance) {
+        best_distance = distance;
+        out_prior = candidate;
+        found = true;
+      }
+    }
+
+    return found;
+  }
+
 bool PerceptionOrchestratorNode::buildContinuousObservation(
     const cbpwm::ContinuousMaskGroup & group,
     size_t group_index,
@@ -543,14 +578,21 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
       } else {
         ++registration_attempts;
         Block precise_block;
+        Block registration_prior;
+        const bool have_registration_prior =
+          continuous_cfg_.registration_pose_prior_enabled &&
+          findContinuousRegistrationPrior(coarse_block, cloud->header, registration_prior);
         std::string registration_reason;
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Continuous precise registration input: group=%zu fragments=[%s] mask_pixels=%d timeout=%.2fs",
+          "Continuous precise registration input: group=%zu fragments=[%s] mask_pixels=%d timeout=%.2fs pose_prior=%s%s%s",
           group_index,
           fragments.c_str(),
           merged_pixels,
-          continuous_cfg_.registration_timeout_s);
+          continuous_cfg_.registration_timeout_s,
+          have_registration_prior ? "true" : "false",
+          have_registration_prior ? " id=" : "",
+          have_registration_prior ? registration_prior.id.c_str() : "");
         const auto t_registration_start = std::chrono::steady_clock::now();
         const bool registration_ok = runRegistrationSync(
           static_cast<uint32_t>(group_index + 1U),
@@ -559,7 +601,9 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
           cloud->header,
           continuous_cfg_.registration_timeout_s,
           precise_block,
-          registration_reason);
+          registration_reason,
+          "",
+          have_registration_prior ? &registration_prior : nullptr);
         timings.registration_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - t_registration_start).count();
 

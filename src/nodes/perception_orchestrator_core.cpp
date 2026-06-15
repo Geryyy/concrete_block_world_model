@@ -5,6 +5,8 @@
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+#include <cmath>
+
 namespace
 {
 
@@ -15,6 +17,26 @@ geometry_msgs::msg::Vector3 toVector3(const std::array<double, 3> & values)
   out.y = values[1];
   out.z = values[2];
   return out;
+}
+
+double diagonalSigma(
+  const Block & block,
+  size_t offset,
+  double fallback_sigma)
+{
+  double sum_var = 0.0;
+  size_t valid = 0;
+  for (size_t i = 0; i < 3; ++i) {
+    const double value = block.pose_covariance[(i + offset) * 6 + i + offset];
+    if (std::isfinite(value) && value > 0.0) {
+      sum_var += value;
+      ++valid;
+    }
+  }
+  if (valid == 0U) {
+    return fallback_sigma;
+  }
+  return std::sqrt(sum_var / static_cast<double>(valid));
 }
 
 }  // namespace
@@ -344,12 +366,21 @@ bool PerceptionOrchestratorNode::runRegistrationSync(
     double timeout_s,
     Block & out_block,
     std::string & reason,
-    const std::string & object_class_override)
+    const std::string & object_class_override,
+    const Block * pose_prior)
   {
     RegisterBlock::Goal goal;
     goal.mask = mask;
     goal.cloud = cloud;
     goal.object_class = object_class_override.empty() ? object_class_ : object_class_override;
+    if (pose_prior) {
+      goal.use_pose_prior = true;
+      goal.prior_pose = pose_prior->pose;
+      goal.prior_position_sigma_m =
+        static_cast<float>(diagonalSigma(*pose_prior, 0, kCoarsePositionSigmaM));
+      goal.prior_orientation_sigma_rad =
+        static_cast<float>(diagonalSigma(*pose_prior, 3, kCoarseOrientationSigmaRad));
+    }
 
     std::mutex reg_mutex;
     std::condition_variable reg_cv;
