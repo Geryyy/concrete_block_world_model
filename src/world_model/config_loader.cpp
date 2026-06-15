@@ -331,6 +331,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.protect_task_blocks_from_timeout = node.declare_parameter<bool>(
     "world_model.protect_task_blocks_from_timeout",
     true);
+  cfg.task_move_fk_tracking_enabled = node.declare_parameter<bool>(
+    "task_move.fk_tracking.enabled",
+    true);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
   cfg.continuous_process_every_n_frames = node.declare_parameter<int>(
@@ -351,14 +354,35 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_min_valid_cloud_points = node.declare_parameter<int>(
     "continuous.quality.min_valid_cloud_points",
     120);
-  cfg.continuous_mask_merge_enabled = node.declare_parameter<bool>(
+  cfg.continuous_mask_merge.enabled = node.declare_parameter<bool>(
     "continuous.mask_merge.enabled",
-    true);
-  cfg.continuous_mask_merge_max_centroid_distance_m = node.declare_parameter<double>(
+    cfg.continuous_mask_merge.enabled);
+  cfg.continuous_mask_merge.max_centroid_distance_m = node.declare_parameter<double>(
     "continuous.mask_merge.max_centroid_distance_m",
-    0.6);
+    cfg.continuous_mask_merge.max_centroid_distance_m);
+  cfg.continuous_mask_merge.occlusion_aware_enabled = node.declare_parameter<bool>(
+    "continuous.mask_merge.occlusion_aware_enabled",
+    cfg.continuous_mask_merge.occlusion_aware_enabled);
+  cfg.continuous_mask_merge.max_bbox_gap_px = node.declare_parameter<double>(
+    "continuous.mask_merge.max_bbox_gap_px",
+    cfg.continuous_mask_merge.max_bbox_gap_px);
+  cfg.continuous_mask_merge.min_bbox_axis_overlap = node.declare_parameter<double>(
+    "continuous.mask_merge.min_bbox_axis_overlap",
+    cfg.continuous_mask_merge.min_bbox_axis_overlap);
+  cfg.continuous_mask_merge.min_bbox_overlap_ratio = node.declare_parameter<double>(
+    "continuous.mask_merge.min_bbox_overlap_ratio",
+    cfg.continuous_mask_merge.min_bbox_overlap_ratio);
+  cfg.continuous_mask_merge.max_union_aspect_ratio = node.declare_parameter<double>(
+    "continuous.mask_merge.max_union_aspect_ratio",
+    cfg.continuous_mask_merge.max_union_aspect_ratio);
+  cfg.continuous_mask_merge.min_union_fill_ratio = node.declare_parameter<double>(
+    "continuous.mask_merge.min_union_fill_ratio",
+    cfg.continuous_mask_merge.min_union_fill_ratio);
   cfg.continuous_registration_enabled = node.declare_parameter<bool>(
     "continuous.registration.enabled",
+    false);
+  cfg.continuous_require_registration = node.declare_parameter<bool>(
+    "continuous.require_registration",
     false);
   cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
     "continuous.registration.timeout_s",
@@ -403,6 +427,26 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<double>(
     "continuous.filtering.tentative_max_age_s",
     cfg.continuous_filtering.tentative_max_age_s);
+  cfg.continuous_filtering.operational_confidence_enabled =
+    node.declare_parameter<bool>(
+    "continuous.filtering.operational_confidence_enabled",
+    cfg.continuous_filtering.operational_confidence_enabled);
+  cfg.continuous_filtering.confidence_stale_after_s =
+    node.declare_parameter<double>(
+    "continuous.filtering.confidence_stale_after_s",
+    cfg.continuous_filtering.confidence_stale_after_s);
+  cfg.continuous_filtering.confidence_age_half_life_s =
+    node.declare_parameter<double>(
+    "continuous.filtering.confidence_age_half_life_s",
+    cfg.continuous_filtering.confidence_age_half_life_s);
+  cfg.continuous_filtering.confidence_miss_penalty =
+    node.declare_parameter<double>(
+    "continuous.filtering.confidence_miss_penalty",
+    cfg.continuous_filtering.confidence_miss_penalty);
+  cfg.continuous_filtering.confidence_rejection_penalty =
+    node.declare_parameter<double>(
+    "continuous.filtering.confidence_rejection_penalty",
+    cfg.continuous_filtering.confidence_rejection_penalty);
   cfg.scene_discovery_coarse_fallback_enabled =
     node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
   cfg.scene_discovery_coarse_fallback_min_points =
@@ -530,14 +574,28 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min_i(
     cfg.continuous_min_valid_cloud_points, 0, "continuous.quality.min_valid_cloud_points");
   clamp_min(
-    cfg.continuous_mask_merge_max_centroid_distance_m,
+    cfg.continuous_mask_merge.max_centroid_distance_m,
     0.0,
     "continuous.mask_merge.max_centroid_distance_m");
+  clamp_min(
+    cfg.continuous_mask_merge.max_bbox_gap_px,
+    0.0,
+    "continuous.mask_merge.max_bbox_gap_px");
+  clamp_min(
+    cfg.continuous_mask_merge.max_union_aspect_ratio,
+    1.0,
+    "continuous.mask_merge.max_union_aspect_ratio");
   clamp_min(cfg.continuous_registration_timeout_s, 0.01, "continuous.registration.timeout_s");
   clamp_min_i(cfg.continuous_registration_max_per_frame, 1, "continuous.registration.max_per_frame");
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
+  if (cfg.continuous_require_registration && !cfg.continuous_registration_enabled) {
+    RCLCPP_WARN(
+      logger,
+      "continuous.require_registration=true but continuous.registration.enabled=false; "
+      "continuous observations will be rejected.");
+  }
   clamp_min(
     cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s,
     0.0,
@@ -566,6 +624,36 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     cfg.continuous_filtering.tentative_max_age_s,
     0.1,
     "continuous.filtering.tentative_max_age_s");
+  clamp_min(
+    cfg.continuous_filtering.confidence_stale_after_s,
+    0.0,
+    "continuous.filtering.confidence_stale_after_s");
+  clamp_min(
+    cfg.continuous_filtering.confidence_age_half_life_s,
+    0.01,
+    "continuous.filtering.confidence_age_half_life_s");
+  if (
+    cfg.continuous_filtering.confidence_miss_penalty < 0.0 ||
+    cfg.continuous_filtering.confidence_miss_penalty > 1.0)
+  {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.filtering.confidence_miss_penalty=%.3f, clamping to [0, 1]",
+      cfg.continuous_filtering.confidence_miss_penalty);
+    cfg.continuous_filtering.confidence_miss_penalty =
+      std::clamp(cfg.continuous_filtering.confidence_miss_penalty, 0.0, 1.0);
+  }
+  if (
+    cfg.continuous_filtering.confidence_rejection_penalty < 0.0 ||
+    cfg.continuous_filtering.confidence_rejection_penalty > 1.0)
+  {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.filtering.confidence_rejection_penalty=%.3f, clamping to [0, 1]",
+      cfg.continuous_filtering.confidence_rejection_penalty);
+    cfg.continuous_filtering.confidence_rejection_penalty =
+      std::clamp(cfg.continuous_filtering.confidence_rejection_penalty, 0.0, 1.0);
+  }
   if (cfg.continuous_min_mask_fill_ratio < 0.0 || cfg.continuous_min_mask_fill_ratio > 1.0) {
     RCLCPP_WARN(
       logger,
@@ -573,6 +661,39 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
       cfg.continuous_min_mask_fill_ratio);
     cfg.continuous_min_mask_fill_ratio =
       std::clamp(cfg.continuous_min_mask_fill_ratio, 0.0, 1.0);
+  }
+  if (
+    cfg.continuous_mask_merge.min_bbox_axis_overlap < 0.0 ||
+    cfg.continuous_mask_merge.min_bbox_axis_overlap > 1.0)
+  {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.mask_merge.min_bbox_axis_overlap=%.3f, clamping to [0, 1]",
+      cfg.continuous_mask_merge.min_bbox_axis_overlap);
+    cfg.continuous_mask_merge.min_bbox_axis_overlap =
+      std::clamp(cfg.continuous_mask_merge.min_bbox_axis_overlap, 0.0, 1.0);
+  }
+  if (
+    cfg.continuous_mask_merge.min_bbox_overlap_ratio < 0.0 ||
+    cfg.continuous_mask_merge.min_bbox_overlap_ratio > 1.0)
+  {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.mask_merge.min_bbox_overlap_ratio=%.3f, clamping to [0, 1]",
+      cfg.continuous_mask_merge.min_bbox_overlap_ratio);
+    cfg.continuous_mask_merge.min_bbox_overlap_ratio =
+      std::clamp(cfg.continuous_mask_merge.min_bbox_overlap_ratio, 0.0, 1.0);
+  }
+  if (
+    cfg.continuous_mask_merge.min_union_fill_ratio < 0.0 ||
+    cfg.continuous_mask_merge.min_union_fill_ratio > 1.0)
+  {
+    RCLCPP_WARN(
+      logger,
+      "Invalid continuous.mask_merge.min_union_fill_ratio=%.3f, clamping to [0, 1]",
+      cfg.continuous_mask_merge.min_union_fill_ratio);
+    cfg.continuous_mask_merge.min_union_fill_ratio =
+      std::clamp(cfg.continuous_mask_merge.min_union_fill_ratio, 0.0, 1.0);
   }
   clamp_min_i(
     cfg.scene_discovery_coarse_fallback_min_points, 1,

@@ -44,6 +44,7 @@ struct WorldModelConfig
   double association_max_age_s{20.0};
   double min_update_confidence{0.25};
   bool protect_task_blocks_from_timeout{true};
+  bool task_move_fk_tracking_enabled{true};
   double refine_target_max_distance_m{1.2};
   std::string perception_mode{"IDLE"};
   int continuous_process_every_n_frames{3};
@@ -52,9 +53,9 @@ struct WorldModelConfig
   int continuous_min_mask_pixels{2000};
   double continuous_min_mask_fill_ratio{0.15};
   int continuous_min_valid_cloud_points{120};
-  bool continuous_mask_merge_enabled{true};
-  double continuous_mask_merge_max_centroid_distance_m{0.6};
+  ContinuousMaskMergeConfig continuous_mask_merge;
   bool continuous_registration_enabled{false};
+  bool continuous_require_registration{false};
   double continuous_registration_timeout_s{3.0};
   int continuous_registration_max_per_frame{1};
   double continuous_association_max_distance_m{0.8};

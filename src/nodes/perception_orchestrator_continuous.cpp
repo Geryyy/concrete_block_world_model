@@ -110,6 +110,7 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
           "Continuous frame: no detections or mask; publishing world snapshot unchanged.");
+        recordContinuousTrackMisses({}, rclcpp::Time(cloud->header.stamp).seconds());
         publishPersistentWorld(cloud->header);
         const auto seg_ms =
           std::chrono::duration_cast<std::chrono::milliseconds>(t_after_seg - t_start).count();
@@ -152,14 +153,14 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       ContinuousStageTimings timings;
       const Eigen::Vector3d * camera_origin =
         have_camera_origin ? &camera_origin_world : nullptr;
+      std::unordered_set<std::string> observed_track_ids;
 
       const auto candidates = buildContinuousCandidates(
         *seg_res, cloud, full_mask, camera_origin, timings, rejected_mask, rejected_count);
 
       const auto groups = cbpwm::groupContinuousCandidates(
         candidates,
-        continuous_cfg_.mask_merge_enabled,
-        continuous_cfg_.mask_merge_max_centroid_distance_m,
+        continuous_cfg_.mask_merge,
         get_logger(),
         *get_clock());
 
@@ -188,6 +189,9 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         if (!applyContinuousObservation(
             observation, cloud->header, timings, assigned_id, upsert_reason))
         {
+          if (!assigned_id.empty()) {
+            observed_track_ids.insert(assigned_id);
+          }
           ++rejected_count;
           cv::bitwise_or(rejected_mask, group.merged_mask, rejected_mask);
           RCLCPP_INFO_THROTTLE(
@@ -201,6 +205,9 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         }
 
         ++accepted_count;
+        if (!assigned_id.empty()) {
+          observed_track_ids.insert(assigned_id);
+        }
         for (const size_t candidate_index : group.candidate_indices) {
           accepted_by_detection[candidates.at(candidate_index).detection_index] = true;
         }
@@ -239,6 +246,9 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
         det_debug_pub_->publish(*debug_msg);
       }
 
+      recordContinuousTrackMisses(
+        observed_track_ids,
+        rclcpp::Time(cloud->header.stamp).seconds());
       publishPersistentWorld(cloud->header);
       const auto t_end = std::chrono::steady_clock::now();
       const auto seg_ms =
@@ -273,6 +283,31 @@ void PerceptionOrchestratorNode::handleContinuousSegmentationResponse(
       RCLCPP_ERROR(get_logger(), "Continuous perception failed: %s", e.what());
       publishPersistentWorld(cloud->header);
       resetBusy();
+    }
+  }
+
+void PerceptionOrchestratorNode::recordContinuousTrackMisses(
+    const std::unordered_set<std::string> & observed_track_ids,
+    double now_s)
+  {
+    if (
+      !continuous_cfg_.filtering_enabled ||
+      !continuous_cfg_.filtering.operational_confidence_enabled)
+    {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (auto & kv : continuous_tracks_) {
+      if (observed_track_ids.count(kv.first) > 0U) {
+        continue;
+      }
+      cbpwm::predict(
+        kv.second,
+        now_s - kv.second.last_update_s,
+        continuous_cfg_.filtering);
+      kv.second.last_update_s = now_s;
+      cbpwm::recordMiss(kv.second, continuous_cfg_.filtering);
     }
   }
 
@@ -388,9 +423,12 @@ std::vector<cbpwm::ContinuousMaskCandidate> PerceptionOrchestratorNode::buildCon
 
       coarse_block.confidence = static_cast<float>(cbpwm::detectionConfidence(det));
       coarse_block.last_seen = cloud->header.stamp;
+      const cv::Rect bbox = toCvRect(det) & cv::Rect(0, 0, full_mask.cols, full_mask.rows);
       candidates.push_back(
         cbpwm::ContinuousMaskCandidate{
           i,
+          det.results.empty() ? std::string{} : det.results.front().hypothesis.class_id,
+          bbox,
           binary_mask.clone(),
           quality,
           coarse_block,
@@ -427,7 +465,7 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
       cv_bridge::CvImage(cloud->header, "mono8", group.merged_mask).toImageMsg();
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Continuous merged cutout input: group=%zu fragments=[%s] merged_pixels=%d source_pixels=%d source_cutout_points=%u",
+      "Continuous merged cutout input: group=%zu fragments=[%s] mask_pixels=%d source_pixels=%d source_cutout_points=%u",
       group_index,
       fragments.c_str(),
       merged_pixels,
@@ -490,65 +528,138 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
     out_observation.fragment_count = group.candidate_indices.size();
     out_observation.precise = false;
 
-    if (continuous_cfg_.registration_enabled) {
-      if (!action_client_ || !action_client_->action_server_is_ready()) {
+    if (continuous_cfg_.registration_enabled || continuous_cfg_.require_registration) {
+      Block precise_block;
+      std::string registration_reason;
+      if (tryPreciseContinuousRegistration(
+          group.merged_mask,
+          cloud,
+          cloud->header,
+          group_index,
+          fragments,
+          merged_pixels,
+          registration_attempts,
+          timings,
+          precise_block,
+          registration_reason))
+      {
+        out_observation.block = precise_block;
+        out_observation.precise = true;
+      } else if (continuous_cfg_.require_registration) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Continuous observation rejected: group=%zu fragments=[%s] require_registration=true reason=%s attempts=%d/%d.",
+          group_index,
+          fragments.c_str(),
+          registration_reason.c_str(),
+          registration_attempts,
+          continuous_cfg_.registration_max_per_frame);
+        return false;
+      } else if (continuous_cfg_.registration_enabled) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Continuous precise registration skipped: registration action unavailable.");
-      } else if (registration_attempts >= continuous_cfg_.registration_max_per_frame) {
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 2000,
-          "Continuous precise registration skipped: group=%zu fragments=[%s] max_per_frame=%d reached.",
+          "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; using coarse observation.",
           group_index,
           fragments.c_str(),
-          continuous_cfg_.registration_max_per_frame);
-      } else {
-        ++registration_attempts;
-        Block precise_block;
-        std::string registration_reason;
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous precise registration input: group=%zu fragments=[%s] merged_pixels=%d timeout=%.2fs",
-          group_index,
-          fragments.c_str(),
-          merged_pixels,
-          continuous_cfg_.registration_timeout_s);
-        const auto t_registration_start = std::chrono::steady_clock::now();
-        const bool registration_ok = runRegistrationSync(
-          static_cast<uint32_t>(group_index + 1U),
-          *mask_msg,
-          *cloud,
-          cloud->header,
-          continuous_cfg_.registration_timeout_s,
-          precise_block,
-          registration_reason);
-        timings.registration_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_registration_start).count();
-
-        if (registration_ok) {
-          out_observation.block = precise_block;
-          out_observation.precise = true;
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "Continuous precise registration accepted: group=%zu fragments=[%s] pos=[%.3f, %.3f, %.3f] confidence=%.3f",
-            group_index,
-            fragments.c_str(),
-            precise_block.pose.position.x,
-            precise_block.pose.position.y,
-            precise_block.pose.position.z,
-            precise_block.confidence);
-        } else {
-          RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
-            group_index,
-            fragments.c_str(),
-            registration_reason.c_str());
-        }
+          registration_reason.c_str());
       }
     }
 
     return true;
+  }
+
+bool PerceptionOrchestratorNode::tryPreciseContinuousRegistration(
+    const cv::Mat & mask,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const std_msgs::msg::Header & header,
+    size_t group_index,
+    const std::string & fragments,
+    int mask_pixels,
+    int & registration_attempts,
+    ContinuousStageTimings & timings,
+    Block & out_block,
+    std::string & reason)
+  {
+    if (!continuous_cfg_.registration_enabled) {
+      reason = "registration disabled";
+      return false;
+    }
+    if (!action_client_ || !action_client_->action_server_is_ready()) {
+      reason = "registration action unavailable";
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Continuous precise registration skipped: %s.", reason.c_str());
+      return false;
+    }
+    if (registration_attempts >= continuous_cfg_.registration_max_per_frame) {
+      reason = "max_per_frame reached";
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Continuous precise registration skipped: group=%zu fragments=[%s] max_per_frame=%d reached.",
+        group_index,
+        fragments.c_str(),
+        continuous_cfg_.registration_max_per_frame);
+      return false;
+    }
+
+    ++registration_attempts;
+    const auto mask_msg = cv_bridge::CvImage(header, "mono8", mask).toImageMsg();
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Continuous precise registration input: group=%zu fragments=[%s] mask_pixels=%d timeout=%.2fs",
+      group_index,
+      fragments.c_str(),
+      mask_pixels,
+      continuous_cfg_.registration_timeout_s);
+
+    const auto t_registration_start = std::chrono::steady_clock::now();
+    const bool registration_ok = runRegistrationSync(
+      static_cast<uint32_t>(group_index + 1U),
+      *mask_msg,
+      *cloud,
+      header,
+      continuous_cfg_.registration_timeout_s,
+      out_block,
+      reason);
+    timings.registration_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t_registration_start).count();
+
+    if (registration_ok) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous precise registration accepted: group=%zu fragments=[%s] pos=[%.3f, %.3f, %.3f] confidence=%.3f",
+        group_index,
+        fragments.c_str(),
+        out_block.pose.position.x,
+        out_block.pose.position.y,
+        out_block.pose.position.z,
+        out_block.confidence);
+      return true;
+    }
+
+    return false;
+  }
+
+bool PerceptionOrchestratorNode::applyDirectContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
+    std::string & assigned_id,
+    std::string & reason)
+  {
+    Block block_to_upsert = observation.block;
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    return cbpwm::upsertRegisteredBlock(
+      persistent_world_,
+      world_block_counter_,
+      block_to_upsert,
+      cbpwm::OneShotMode::kSceneDiscovery,
+      "",
+      header,
+      *get_clock(),
+      assoc_cfg,
+      assigned_id,
+      reason);
   }
 
 bool PerceptionOrchestratorNode::applyContinuousObservation(
@@ -562,39 +673,46 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
     assoc_cfg.association_max_distance_m = continuous_cfg_.association_max_distance_m;
     assoc_cfg.association_max_age_s = continuous_cfg_.association_max_age_s;
 
+    const auto t_upsert_start = std::chrono::steady_clock::now();
+    const bool upsert_ok =
+      continuous_cfg_.filtering_enabled ?
+      applyFilteredContinuousObservation(
+        observation,
+        header,
+        assoc_cfg,
+        assigned_id,
+        reason) :
+      applyDirectContinuousObservation(
+        observation,
+        header,
+        assoc_cfg,
+        assigned_id,
+        reason);
+    timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t_upsert_start).count();
+
+    if (upsert_ok) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Continuous world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d filtered=%s",
+        observation.block.id.c_str(),
+        assigned_id.c_str(),
+        observation.block.confidence,
+        observation.block.pose_status,
+        continuous_cfg_.filtering_enabled ? "true" : "false");
+    }
+    return upsert_ok;
+  }
+
+bool PerceptionOrchestratorNode::applyFilteredContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
+    std::string & assigned_id,
+    std::string & reason)
+  {
     Block block_to_upsert = observation.block;
     bool upsert_ok = false;
-    const auto t_upsert_start = std::chrono::steady_clock::now();
-    if (!continuous_cfg_.filtering_enabled) {
-      {
-        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-        upsert_ok = cbpwm::upsertRegisteredBlock(
-          persistent_world_,
-          world_block_counter_,
-          block_to_upsert,
-          cbpwm::OneShotMode::kSceneDiscovery,
-          "",
-          header,
-          *get_clock(),
-          assoc_cfg,
-          assigned_id,
-          reason);
-      }
-      timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - t_upsert_start).count();
-
-      if (upsert_ok) {
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
-          observation.block.id.c_str(),
-          assigned_id.c_str(),
-          block_to_upsert.confidence,
-          block_to_upsert.pose_status);
-      }
-      return upsert_ok;
-    }
-
     const rclcpp::Time now_stamp(header.stamp, get_clock()->get_clock_type());
     const double now_s = now_stamp.seconds();
     {
@@ -653,8 +771,6 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
             "Continuous filtering skipped TASK_MOVE block: assigned=%s incoming=%s",
             assigned_id.c_str(),
             observation.block.id.c_str());
-          timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - t_upsert_start).count();
           return false;
         }
       }
@@ -672,8 +788,6 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
           observation.block.id.c_str(),
           track.hit_history.size(),
           continuous_cfg_.filtering.confirmation_hits);
-        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_upsert_start).count();
         return false;
       }
 
@@ -698,6 +812,7 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
         track_it->second,
         now_s - track_it->second.last_update_s,
         continuous_cfg_.filtering);
+      track_it->second.last_update_s = now_s;
       const bool update_ok = cbpwm::gateAndUpdate(
         track_it->second,
         observation,
@@ -710,11 +825,9 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
           assigned_id.c_str(),
           observation.block.id.c_str(),
           reason.c_str());
-        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_upsert_start).count();
         return false;
       }
-      track_it->second.last_update_s = now_s;
+      track_it->second.last_observation_s = now_s;
 
       const bool confirmed =
         track_it->second.state == cbpwm::FilteredBlockTrackState::kConfirmed;
@@ -727,12 +840,14 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
           observation.block.id.c_str(),
           track_it->second.hit_history.size(),
           continuous_cfg_.filtering.confirmation_hits);
-        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_upsert_start).count();
         return false;
       }
 
-      block_to_upsert = cbpwm::toBlockMsg(track_it->second, observation.block);
+      block_to_upsert = cbpwm::toBlockMsg(
+        track_it->second,
+        observation.block,
+        continuous_cfg_.filtering,
+        now_s);
       block_to_upsert.id = assigned_id;
       block_to_upsert.last_seen = header.stamp;
       const auto world_it = persistent_world_.find(assigned_id);
@@ -741,8 +856,6 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
           rclcpp::Time(world_it->second.last_seen, get_clock()->get_clock_type()))
         {
           reason = "stale update (incoming older than stored state)";
-          timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - t_upsert_start).count();
           return false;
         }
         if (world_it->second.task_status != Block::TASK_UNKNOWN) {
@@ -762,18 +875,6 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
       persistent_world_[assigned_id] = block_to_upsert;
       upsert_ok = true;
       reason = "filtered update accepted";
-    }
-    timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - t_upsert_start).count();
-
-    if (upsert_ok) {
-      RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "Continuous filtered world-model upsert: incoming=%s assigned=%s confidence=%.3f pose_status=%d",
-        observation.block.id.c_str(),
-        assigned_id.c_str(),
-        block_to_upsert.confidence,
-        block_to_upsert.pose_status);
     }
     return upsert_ok;
   }

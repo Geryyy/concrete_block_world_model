@@ -178,3 +178,42 @@ TEST(BlockFilter, PredictionGrowthReducesDerivedConfidence)
 
   EXPECT_LT(after, before);
 }
+
+TEST(BlockFilter, OperationalConfidenceFlagKeepsCovarianceOnlyBehaviorWhenDisabled)
+{
+  cbpwm::BlockFilterConfig cfg;
+  cfg.confirmation_hits = 1;
+  cfg.confirmation_window = 3;
+  cfg.operational_confidence_enabled = false;
+
+  auto track = cbpwm::initializeTrack(makeObservation(makeBlock(0.0, 0.0, 0.0)), 0.0, cfg);
+  const double before = cbpwm::trackConfidence(track, cfg, 0.0);
+
+  cbpwm::recordMiss(track, cfg);
+  track.consecutive_rejections = 2;
+  const double after = cbpwm::trackConfidence(track, cfg, 30.0);
+
+  EXPECT_NEAR(after, before, 1.0e-9);
+}
+
+TEST(BlockFilter, OperationalConfidencePenalizesAgeMissesAndRejections)
+{
+  cbpwm::BlockFilterConfig cfg;
+  cfg.confirmation_hits = 1;
+  cfg.confirmation_window = 3;
+  cfg.operational_confidence_enabled = true;
+  cfg.confidence_stale_after_s = 0.0;
+  cfg.confidence_age_half_life_s = 10.0;
+  cfg.confidence_miss_penalty = 0.5;
+  cfg.confidence_rejection_penalty = 0.25;
+
+  auto track = cbpwm::initializeTrack(makeObservation(makeBlock(0.0, 0.0, 0.0)), 0.0, cfg);
+  const double before = cbpwm::trackConfidence(track, cfg, 0.0);
+
+  cbpwm::recordMiss(track, cfg);
+  track.consecutive_rejections = 1;
+  const double after = cbpwm::trackConfidence(track, cfg, 10.0);
+
+  EXPECT_LT(after, before);
+  EXPECT_GT(after, 0.0);
+}

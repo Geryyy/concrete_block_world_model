@@ -59,14 +59,51 @@ void PerceptionOrchestratorNode::updateLatestWorldCache(const BlockArray & out)
 
 BlockArray PerceptionOrchestratorNode::latestWorldSnapshot()
   {
-    std::lock_guard<std::mutex> lock(latest_world_mutex_);
-    return latest_world_;
+    BlockArray snapshot;
+    {
+      std::lock_guard<std::mutex> lock(latest_world_mutex_);
+      snapshot = latest_world_;
+    }
+
+    if (!continuous_cfg_.filtering_enabled) {
+      return snapshot;
+    }
+
+    const double now_s = now().seconds();
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (auto & block : snapshot.blocks) {
+      refreshContinuousBlockConfidenceLocked(block, now_s);
+    }
+    return snapshot;
   }
 
 PlanningScene PerceptionOrchestratorNode::latestPlanningSceneSnapshot()
   {
-    std::lock_guard<std::mutex> lock(latest_planning_scene_mutex_);
-    return latest_planning_scene_;
+    PlanningScene scene;
+    {
+      std::lock_guard<std::mutex> lock(latest_planning_scene_mutex_);
+      scene = latest_planning_scene_;
+    }
+
+    if (!continuous_cfg_.filtering_enabled) {
+      return scene;
+    }
+
+    const double now_s = now().seconds();
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (auto & object : scene.objects) {
+      if (object.source_type != PlanningSceneObject::SOURCE_BLOCK) {
+        continue;
+      }
+      const auto track_it = continuous_tracks_.find(object.id);
+      if (track_it == continuous_tracks_.end()) {
+        continue;
+      }
+      object.confidence =
+        static_cast<float>(
+          cbpwm::trackConfidence(track_it->second, continuous_cfg_.filtering, now_s));
+    }
+    return scene;
   }
 
 std::vector<PlanningSceneObject> PerceptionOrchestratorNode::staticSceneObjectsInWorld() const

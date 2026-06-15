@@ -24,6 +24,8 @@ struct ContinuousMaskQuality
 struct ContinuousMaskCandidate
 {
   size_t detection_index{0};
+  std::string class_id;
+  cv::Rect bbox;
   cv::Mat mask;
   ContinuousMaskQuality quality;
   concrete_block_world_model_interfaces::msg::Block coarse_block;
@@ -35,6 +37,18 @@ struct ContinuousMaskGroup
 {
   std::vector<size_t> candidate_indices;
   cv::Mat merged_mask;
+};
+
+struct ContinuousMaskMergeConfig
+{
+  bool enabled{true};
+  double max_centroid_distance_m{0.6};
+  bool occlusion_aware_enabled{true};
+  double max_bbox_gap_px{24.0};
+  double min_bbox_axis_overlap{0.35};
+  double min_bbox_overlap_ratio{0.20};
+  double max_union_aspect_ratio{2.8};
+  double min_union_fill_ratio{0.08};
 };
 
 // One pose measurement extracted from a continuous frame, decoupled from the
@@ -68,13 +82,12 @@ bool candidateFitsGroup(
   const ContinuousMaskCandidate & candidate,
   const ContinuousMaskGroup & group,
   const std::vector<ContinuousMaskCandidate> & candidates,
-  double max_centroid_distance_m,
+  const ContinuousMaskMergeConfig & cfg,
   double & nearest_distance_m);
 
 std::vector<ContinuousMaskGroup> groupContinuousCandidates(
   const std::vector<ContinuousMaskCandidate> & candidates,
-  bool merge_enabled,
-  double max_centroid_distance_m,
+  const ContinuousMaskMergeConfig & cfg,
   const rclcpp::Logger & logger,
   rclcpp::Clock & clock);
 

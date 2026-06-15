@@ -111,9 +111,9 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_mask_pixels{2000};
     double min_mask_fill_ratio{0.15};
     int min_valid_cloud_points{120};
-    bool mask_merge_enabled{true};
-    double mask_merge_max_centroid_distance_m{0.6};
+    cbpwm::ContinuousMaskMergeConfig mask_merge;
     bool registration_enabled{false};
+    bool require_registration{false};
     double registration_timeout_s{3.0};
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
@@ -213,6 +213,10 @@ private:
     Eigen::Vector3d & p_camera,
     Eigen::Quaterniond & q_world,
     std::string & reason);
+  bool lookupTaskMoveFkPose(
+    const std_msgs::msg::Header & header,
+    geometry_msgs::msg::Pose & pose_world,
+    std::string & reason);
   bool resolveCameraFrame(
     const std_msgs::msg::Header & header,
     std::string & camera_frame,
@@ -255,6 +259,11 @@ private:
     std::shared_ptr<UpsertBlockSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
+  void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
+  void refreshContinuousBlockConfidenceLocked(Block & block, double now_s) const;
+  void recordContinuousTrackMisses(
+    const std::unordered_set<std::string> & observed_track_ids,
+    double now_s);
   void publishDetectionOverlay(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const vision_msgs::msg::Detection2DArray & detections,
@@ -295,12 +304,33 @@ private:
     int & registration_attempts,
     ContinuousStageTimings & timings,
     cbpwm::BlockObservation & out_observation);
-  // World-update seam for the continuous stream: a future probabilistic
-  // filter replaces this association + overwrite-upsert.
+  bool tryPreciseContinuousRegistration(
+    const cv::Mat & mask,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const std_msgs::msg::Header & header,
+    size_t group_index,
+    const std::string & fragments,
+    int mask_pixels,
+    int & registration_attempts,
+    ContinuousStageTimings & timings,
+    Block & out_block,
+    std::string & reason);
   bool applyContinuousObservation(
     const cbpwm::BlockObservation & observation,
     const std_msgs::msg::Header & header,
     ContinuousStageTimings & timings,
+    std::string & assigned_id,
+    std::string & reason);
+  bool applyDirectContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
+    std::string & assigned_id,
+    std::string & reason);
+  bool applyFilteredContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
     std::string & assigned_id,
     std::string & reason);
   void processFrame(
@@ -392,6 +422,7 @@ private:
   CameraIntrinsics camera_intrinsics_;
   std::string camera_info_frame_id_;
   bool refine_grasped_use_fk_roi_{true};
+  bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame_{};
   std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};

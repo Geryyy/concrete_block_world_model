@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <utility>
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
 
@@ -117,6 +118,7 @@ FilteredBlockTrack initializeTrack(
   track.orientation_covariance = orientationObservationCovariance(observation);
   track.first_update_s = stamp_s;
   track.last_update_s = stamp_s;
+  track.last_observation_s = stamp_s;
   pushHistory(track, true, cfg);
   return track;
 }
@@ -277,6 +279,50 @@ Block toBlockMsg(
     }
   }
   block.confidence = static_cast<float>(covarianceTraceToConfidence(track.position_covariance));
+  return block;
+}
+
+double trackConfidence(
+  const FilteredBlockTrack & track,
+  const BlockFilterConfig & cfg,
+  double now_s)
+{
+  const double base = covarianceTraceToConfidence(track.position_covariance);
+  if (!cfg.operational_confidence_enabled) {
+    return base;
+  }
+
+  const double age_s = std::max(0.0, now_s - track.last_observation_s);
+  double age_factor = 1.0;
+  if (age_s > cfg.confidence_stale_after_s) {
+    const double half_life = std::max(1.0e-6, cfg.confidence_age_half_life_s);
+    age_factor = std::pow(0.5, (age_s - cfg.confidence_stale_after_s) / half_life);
+  }
+
+  double hit_ratio = 1.0;
+  if (!track.hit_history.empty()) {
+    const int hits = static_cast<int>(
+      std::count(track.hit_history.begin(), track.hit_history.end(), true));
+    hit_ratio = static_cast<double>(hits) / static_cast<double>(track.hit_history.size());
+  }
+  const double miss_penalty = std::clamp(cfg.confidence_miss_penalty, 0.0, 1.0);
+  const double history_factor = 1.0 - miss_penalty * (1.0 - hit_ratio);
+
+  const double rejection_penalty = std::clamp(cfg.confidence_rejection_penalty, 0.0, 1.0);
+  const double rejection_factor =
+    std::pow(1.0 - rejection_penalty, std::max(0, track.consecutive_rejections));
+
+  return std::clamp(base * age_factor * history_factor * rejection_factor, 0.0, 1.0);
+}
+
+Block toBlockMsg(
+  const FilteredBlockTrack & track,
+  Block block,
+  const BlockFilterConfig & cfg,
+  double now_s)
+{
+  block = toBlockMsg(track, std::move(block));
+  block.confidence = static_cast<float>(trackConfidence(track, cfg, now_s));
   return block;
 }
 
