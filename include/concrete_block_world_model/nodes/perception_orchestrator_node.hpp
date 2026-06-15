@@ -215,6 +215,10 @@ private:
     Eigen::Vector3d & p_camera,
     Eigen::Quaterniond & q_world,
     std::string & reason);
+  bool lookupTaskMoveFkPose(
+    const std_msgs::msg::Header & header,
+    geometry_msgs::msg::Pose & pose_world,
+    std::string & reason);
   bool resolveCameraFrame(
     const std_msgs::msg::Header & header,
     std::string & camera_frame,
@@ -257,6 +261,7 @@ private:
     std::shared_ptr<UpsertBlockSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
+  void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
   void refreshContinuousBlockConfidenceLocked(Block & block, double now_s) const;
   void recordContinuousTrackMisses(
     const std::unordered_set<std::string> & observed_track_ids,
@@ -402,6 +407,7 @@ private:
   CameraIntrinsics camera_intrinsics_;
   std::string camera_info_frame_id_;
   bool refine_grasped_use_fk_roi_{true};
+  bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame_{};
   std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};

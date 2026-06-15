@@ -66,6 +66,15 @@ world_model_node:
           rect_m: 0.30
 
     # ----------------------------------
+    # Grasped / lifted block tracking
+    # ----------------------------------
+    task_move:
+      # Once a block is marked TASK_MOVE, its world pose is owned by FK:
+      # T_world_block = T_world_tcp * refine_grasped.tcp_to_block.
+      fk_tracking:
+        enabled: true
+
+    # ----------------------------------
     # Continuous coarse perception mode
     # ----------------------------------
     continuous:

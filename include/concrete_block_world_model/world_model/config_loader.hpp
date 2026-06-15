@@ -44,6 +44,7 @@ struct WorldModelConfig
   double association_max_age_s{20.0};
   double min_update_confidence{0.25};
   bool protect_task_blocks_from_timeout{true};
+  bool task_move_fk_tracking_enabled{true};
   double refine_target_max_distance_m{1.2};
   std::string perception_mode{"IDLE"};
   int continuous_process_every_n_frames{3};

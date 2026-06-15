@@ -1,5 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/continuous_perception.hpp"
@@ -52,6 +53,8 @@ void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header
 
 void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Header & header)
   {
+    updateTaskMoveBlocksFromFk(header);
+
     BlockArray out;
     out.header = header;
 
@@ -94,6 +97,64 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
       latest_planning_scene_ = buildPlanningSceneSnapshot(out.header, out.blocks);
     }
     publishWorldMarkers(out.header, out.blocks);
+  }
+
+void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header)
+  {
+    if (!task_move_fk_tracking_enabled_) {
+      return;
+    }
+
+    std::vector<std::string> task_move_ids;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      for (const auto & kv : persistent_world_) {
+        if (kv.second.task_status == Block::TASK_MOVE) {
+          task_move_ids.push_back(kv.first);
+        }
+      }
+    }
+
+    if (task_move_ids.empty()) {
+      return;
+    }
+
+    geometry_msgs::msg::Pose fk_pose;
+    std::string reason;
+    if (!lookupTaskMoveFkPose(header, fk_pose, reason)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "TASK_MOVE FK tracking skipped for %zu block(s): %s",
+        task_move_ids.size(),
+        reason.c_str());
+      return;
+    }
+
+    const rclcpp::Time stamp(header.stamp, get_clock()->get_clock_type());
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    for (const auto & id : task_move_ids) {
+      auto it = persistent_world_.find(id);
+      if (it == persistent_world_.end() || it->second.task_status != Block::TASK_MOVE) {
+        continue;
+      }
+
+      it->second.pose = fk_pose;
+      it->second.pose_status = Block::POSE_PRECISE;
+      it->second.confidence = 1.0f;
+      it->second.last_seen = header.stamp;
+      setDiagonalPoseCovariance(
+        it->second,
+        kPrecisePositionSigmaMinM,
+        kPreciseOrientationSigmaRad);
+
+      cbpwm::BlockObservation observation;
+      observation.block = it->second;
+      observation.precise = true;
+      continuous_tracks_[id] = cbpwm::initializeTrack(
+        observation,
+        stamp.seconds(),
+        continuous_cfg_.filtering);
+    }
   }
 
 void PerceptionOrchestratorNode::refreshContinuousBlockConfidenceLocked(

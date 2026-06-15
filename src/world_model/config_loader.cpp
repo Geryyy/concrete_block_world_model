@@ -331,6 +331,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.protect_task_blocks_from_timeout = node.declare_parameter<bool>(
     "world_model.protect_task_blocks_from_timeout",
     true);
+  cfg.task_move_fk_tracking_enabled = node.declare_parameter<bool>(
+    "task_move.fk_tracking.enabled",
+    true);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
   cfg.continuous_process_every_n_frames = node.declare_parameter<int>(
