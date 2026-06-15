@@ -22,6 +22,11 @@ struct BlockFilterConfig
   int max_consecutive_rejections{3};
   double tentative_max_age_s{2.0};
   bool publish_new_tracks_without_prior{false};
+  bool temporal_bootstrap_enabled{true};
+  int temporal_bootstrap_min_stable_observations{3};
+  double temporal_bootstrap_max_mask_area_change_ratio{0.35};
+  double temporal_bootstrap_max_mask_centroid_jump_px{45.0};
+  double temporal_bootstrap_max_position_jump_m{0.20};
   bool operational_confidence_enabled{false};
   double confidence_stale_after_s{1.0};
   double confidence_age_half_life_s{5.0};
@@ -47,6 +52,11 @@ struct FilteredBlockTrack
   double first_update_s{0.0};
   double last_update_s{0.0};
   double last_observation_s{0.0};
+  int stable_observations{0};
+  int last_mask_pixels{0};
+  bool has_last_mask_centroid{false};
+  double last_mask_centroid_x_px{0.0};
+  double last_mask_centroid_y_px{0.0};
 };
 
 Eigen::Vector3d blockPosition(
@@ -78,6 +88,10 @@ bool gateAndUpdate(
   const BlockObservation & observation,
   const BlockFilterConfig & cfg,
   std::string & reason);
+
+bool trackHasStableTemporalBootstrap(
+  const FilteredBlockTrack & track,
+  const BlockFilterConfig & cfg);
 
 concrete_block_world_model_interfaces::msg::Block toBlockMsg(
   const FilteredBlockTrack & track,

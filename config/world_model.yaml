@@ -118,6 +118,13 @@ world_model_node:
         # Keep no-prior tracks internal by default. Enable for discovery ablations
         # where continuous mode is allowed to publish newly found blocks.
         publish_new_tracks_without_prior: false
+        # Allow no-prior tracks to bootstrap only when mask area, mask centroid,
+        # and 3D position evolve smoothly across consecutive observations.
+        temporal_bootstrap_enabled: true
+        temporal_bootstrap_min_stable_observations: 3
+        temporal_bootstrap_max_mask_area_change_ratio: 0.35
+        temporal_bootstrap_max_mask_centroid_jump_px: 45.0
+        temporal_bootstrap_max_position_jump_m: 0.20
         # Optional operational confidence model for trust decisions. When enabled,
         # confidence is covariance confidence multiplied by freshness, recent hit
         # ratio, and rejection penalties.
