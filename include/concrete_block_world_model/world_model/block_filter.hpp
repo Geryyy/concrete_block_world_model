@@ -21,6 +21,7 @@ struct BlockFilterConfig
   int confirmation_window{3};
   int max_consecutive_rejections{3};
   double tentative_max_age_s{2.0};
+  bool publish_new_tracks_without_prior{false};
   bool operational_confidence_enabled{false};
   double confidence_stale_after_s{1.0};
   double confidence_age_half_life_s{5.0};

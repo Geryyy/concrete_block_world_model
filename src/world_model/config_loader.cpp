@@ -428,6 +428,10 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<double>(
     "continuous.filtering.tentative_max_age_s",
     cfg.continuous_filtering.tentative_max_age_s);
+  cfg.continuous_filtering.publish_new_tracks_without_prior =
+    node.declare_parameter<bool>(
+    "continuous.filtering.publish_new_tracks_without_prior",
+    cfg.continuous_filtering.publish_new_tracks_without_prior);
   cfg.continuous_filtering.operational_confidence_enabled =
     node.declare_parameter<bool>(
     "continuous.filtering.operational_confidence_enabled",
