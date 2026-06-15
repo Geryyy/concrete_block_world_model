@@ -114,7 +114,7 @@ world_model_node:
         # Max wait for one registration action.
         timeout_s: 2.0
         # Limit precise registrations per continuous frame.
-        max_per_frame: 1
+        max_per_frame: 2
       association:
         # Keep stacked blocks from collapsing into one track.
         # Max distance for matching continuous observations to existing blocks.
