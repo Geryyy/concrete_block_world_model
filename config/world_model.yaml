@@ -102,7 +102,6 @@ world_model_node:
         # If registration fails, continuous mode still falls back to the coarse pose.
         enabled: true
         pose_prior_enabled: true
-        pose_prior_max_result_distance_m: 0.30
         timeout_s: 3.0
         max_per_frame: 1
       association:
