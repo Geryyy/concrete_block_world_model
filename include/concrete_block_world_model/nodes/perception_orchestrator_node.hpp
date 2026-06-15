@@ -304,12 +304,33 @@ private:
     int & registration_attempts,
     ContinuousStageTimings & timings,
     cbpwm::BlockObservation & out_observation);
-  // World-update seam for the continuous stream: a future probabilistic
-  // filter replaces this association + overwrite-upsert.
+  bool tryPreciseContinuousRegistration(
+    const cv::Mat & mask,
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
+    const std_msgs::msg::Header & header,
+    size_t group_index,
+    const std::string & fragments,
+    int mask_pixels,
+    int & registration_attempts,
+    ContinuousStageTimings & timings,
+    Block & out_block,
+    std::string & reason);
   bool applyContinuousObservation(
     const cbpwm::BlockObservation & observation,
     const std_msgs::msg::Header & header,
     ContinuousStageTimings & timings,
+    std::string & assigned_id,
+    std::string & reason);
+  bool applyDirectContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
+    std::string & assigned_id,
+    std::string & reason);
+  bool applyFilteredContinuousObservation(
+    const cbpwm::BlockObservation & observation,
+    const std_msgs::msg::Header & header,
+    const cbpwm::AssociationConfig & assoc_cfg,
     std::string & assigned_id,
     std::string & reason);
   void processFrame(

@@ -60,6 +60,10 @@ world_model_node:
           frame_id: world
           position: [0.000000, 0.000000, 1.212500]
           dimensions: [0.450000, 0.650000, 1.512500]
+
+      # ---- Advanced / experimental scene-discovery fallback ----
+      # Kept visible for ablation; normal continuous operation should rely on
+      # registered detections instead of inserting coarse fallback poses.
       scene_discovery_coarse_fallback:
         # Allow scene discovery to insert coarse poses when registration fails.
         enable: true
@@ -69,12 +73,8 @@ world_model_node:
           # BBox max(w,h)/min(w,h) <= threshold means square front face.
           square_ratio_thresh: 1.35
         center_offset:
-          # Shift coarse centroid away from camera along viewing ray:
-          # square front face -> deeper offset (0.45 m)
-          # rectangular front face -> smaller offset (0.30 m)
-          # Offset used for square-looking front faces.
+          # Shift coarse centroid away from camera along viewing ray.
           square_m: 0.45
-          # Offset used for rectangular-looking front/side faces.
           rect_m: 0.30
 
     # ----------------------------------
@@ -97,6 +97,8 @@ world_model_node:
       segmentation_timeout_s: 1.0
       # Max wait for mask-to-point-cloud cutout per detection.
       cutout_timeout_s: 1.0
+      # Reject continuous observations unless precise registration succeeds.
+      require_registration: true
       quality:
         # Reject detections with fewer mask pixels.
         min_mask_pixels: 100
@@ -104,28 +106,6 @@ world_model_node:
         min_mask_fill_ratio: 0.05
         # Reject cutouts with too few valid 3D points.
         min_valid_cloud_points: 120
-      # Combine same-frame split masks that describe the same physical block.
-      mask_merge:
-        # Merge same-frame mask fragments before registration.
-        enabled: false
-        # Max 3D centroid distance for merge candidates.
-        max_centroid_distance_m: 0.6
-        # Keep off in continuous mode: stacked blocks can be visually adjacent
-        # and should remain separate world-model tracks.
-        # Use 2D bbox compatibility to merge masks split by occlusion.
-        occlusion_aware_enabled: false
-        # Max pixel gap between compatible bounding boxes.
-        max_bbox_gap_px: 24.0
-        # Required overlap along one bbox axis.
-        min_bbox_axis_overlap: 0.35
-        # Required 2D bbox intersection-over-union.
-        min_bbox_overlap_ratio: 0.20
-        # Reject merged masks with an implausibly long union bbox.
-        max_union_aspect_ratio: 2.8
-        # Reject merged masks whose union bbox is mostly empty.
-        min_union_fill_ratio: 0.08
-      # Reject continuous observations unless precise registration succeeds.
-      require_registration: true
       registration:
         # Keep continuous mode simple: register each detected mask directly,
         # without mask merging, temporal filtering, or world-prior seeding.
@@ -141,6 +121,26 @@ world_model_node:
         max_distance_m: 0.3
         # Max age for existing blocks to be considered by continuous association.
         max_age_s: 10.0
+
+      # ---- Advanced / experimental continuous features ----
+      # Keep disabled unless explicitly running an ablation experiment.
+      mask_merge:
+        # Merge same-frame mask fragments before registration.
+        enabled: false
+        # Max 3D centroid distance for merge candidates.
+        max_centroid_distance_m: 0.6
+        # Use 2D bbox compatibility to merge masks split by occlusion.
+        occlusion_aware_enabled: false
+        # Max pixel gap between compatible bounding boxes.
+        max_bbox_gap_px: 24.0
+        # Required overlap along one bbox axis.
+        min_bbox_axis_overlap: 0.35
+        # Required 2D bbox intersection-over-union.
+        min_bbox_overlap_ratio: 0.20
+        # Reject merged masks with an implausibly long union bbox.
+        max_union_aspect_ratio: 2.8
+        # Reject merged masks whose union bbox is mostly empty.
+        min_union_fill_ratio: 0.08
       filtering:
         # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
         # Enable probabilistic temporal filtering for continuous observations.
