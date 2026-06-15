@@ -80,6 +80,14 @@ world_model_node:
       mask_merge:
         enabled: true
         max_centroid_distance_m: 0.6
+        # Merge same-class fragments that are 2D-compatible even when the
+        # gripper splits the mask and shifts each fragment's 3D centroid.
+        occlusion_aware_enabled: true
+        max_bbox_gap_px: 24.0
+        min_bbox_axis_overlap: 0.35
+        min_bbox_overlap_ratio: 0.20
+        max_union_aspect_ratio: 2.8
+        min_union_fill_ratio: 0.08
       registration:
         # Try full global + local registration on merged masks after coarse clustering.
         # If registration fails, continuous mode still falls back to the coarse pose.
@@ -92,7 +100,7 @@ world_model_node:
         max_age_s: 20.0
       filtering:
         # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
-        enabled: false
+        enabled: true
         # Static-model random-walk process noise. Position/orientation covariance
         # grows by sigma^2 * dt between accepted observations.
         position_process_sigma_m_per_sqrt_s: 0.03
@@ -105,6 +113,14 @@ world_model_node:
         # Treat repeated gated jumps as a genuinely moved/reappeared block.
         max_consecutive_rejections: 3
         tentative_max_age_s: 2.0
+        # Optional operational confidence model for trust decisions. When enabled,
+        # confidence is covariance confidence multiplied by freshness, recent hit
+        # ratio, and rejection penalties.
+        operational_confidence_enabled: false
+        confidence_stale_after_s: 1.0
+        confidence_age_half_life_s: 5.0
+        confidence_miss_penalty: 0.5
+        confidence_rejection_penalty: 0.25
 
     # ----------------------------------
     # Registration gating

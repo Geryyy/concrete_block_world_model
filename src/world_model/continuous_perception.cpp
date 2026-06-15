@@ -1,7 +1,9 @@
 #include "concrete_block_world_model/world_model/continuous_perception.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <utility>
 
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
@@ -19,6 +21,113 @@ cv::Rect clippedDetectionRect(
   const cv::Rect image_rect(0, 0, image_size.width, image_size.height);
   const cv::Rect raw = toCvRect(det);
   return raw & image_rect;
+}
+
+bool sameClassOrUnknown(
+  const ContinuousMaskCandidate & lhs,
+  const ContinuousMaskCandidate & rhs)
+{
+  return lhs.class_id.empty() || rhs.class_id.empty() || lhs.class_id == rhs.class_id;
+}
+
+double overlapRatioOfSmaller(const cv::Rect & lhs, const cv::Rect & rhs)
+{
+  const cv::Rect intersection = lhs & rhs;
+  const int smaller_area = std::min(lhs.area(), rhs.area());
+  if (smaller_area <= 0) {
+    return 0.0;
+  }
+  return static_cast<double>(intersection.area()) / static_cast<double>(smaller_area);
+}
+
+double axisOverlapRatio(
+  int a_min,
+  int a_max,
+  int b_min,
+  int b_max)
+{
+  const int overlap = std::max(0, std::min(a_max, b_max) - std::max(a_min, b_min));
+  const int smaller = std::min(a_max - a_min, b_max - b_min);
+  if (smaller <= 0) {
+    return 0.0;
+  }
+  return static_cast<double>(overlap) / static_cast<double>(smaller);
+}
+
+double rectGapPx(const cv::Rect & lhs, const cv::Rect & rhs)
+{
+  const int lhs_right = lhs.x + lhs.width;
+  const int rhs_right = rhs.x + rhs.width;
+  const int horizontal_gap = std::max({lhs.x - rhs_right, rhs.x - lhs_right, 0});
+  const int lhs_bottom = lhs.y + lhs.height;
+  const int rhs_bottom = rhs.y + rhs.height;
+  const int vertical_gap = std::max({lhs.y - rhs_bottom, rhs.y - lhs_bottom, 0});
+  if (horizontal_gap == 0) {
+    return static_cast<double>(vertical_gap);
+  }
+  if (vertical_gap == 0) {
+    return static_cast<double>(horizontal_gap);
+  }
+  return std::hypot(static_cast<double>(horizontal_gap), static_cast<double>(vertical_gap));
+}
+
+bool unionShapePlausible(
+  const ContinuousMaskCandidate & candidate,
+  const ContinuousMaskGroup & group,
+  const ContinuousMaskMergeConfig & cfg)
+{
+  const cv::Rect union_rect = candidate.bbox | cv::boundingRect(group.merged_mask);
+  if (union_rect.area() <= 0) {
+    return false;
+  }
+
+  const double longer = static_cast<double>(std::max(union_rect.width, union_rect.height));
+  const double shorter = static_cast<double>(std::max(1, std::min(union_rect.width, union_rect.height)));
+  if ((longer / shorter) > cfg.max_union_aspect_ratio) {
+    return false;
+  }
+
+  cv::Mat merged;
+  cv::bitwise_or(group.merged_mask, candidate.mask, merged);
+  const cv::Mat roi = merged(union_rect);
+  const double fill_ratio =
+    static_cast<double>(cv::countNonZero(roi)) / static_cast<double>(union_rect.area());
+  return fill_ratio >= cfg.min_union_fill_ratio;
+}
+
+bool bboxOcclusionCompatible(
+  const ContinuousMaskCandidate & candidate,
+  const ContinuousMaskCandidate & grouped,
+  const ContinuousMaskGroup & group,
+  const ContinuousMaskMergeConfig & cfg)
+{
+  if (!cfg.occlusion_aware_enabled || candidate.bbox.area() <= 0 || grouped.bbox.area() <= 0) {
+    return false;
+  }
+  if (!sameClassOrUnknown(candidate, grouped)) {
+    return false;
+  }
+
+  const double overlap_ratio = overlapRatioOfSmaller(candidate.bbox, grouped.bbox);
+  if (overlap_ratio >= cfg.min_bbox_overlap_ratio) {
+    return unionShapePlausible(candidate, group, cfg);
+  }
+
+  const double x_overlap = axisOverlapRatio(
+    candidate.bbox.x,
+    candidate.bbox.x + candidate.bbox.width,
+    grouped.bbox.x,
+    grouped.bbox.x + grouped.bbox.width);
+  const double y_overlap = axisOverlapRatio(
+    candidate.bbox.y,
+    candidate.bbox.y + candidate.bbox.height,
+    grouped.bbox.y,
+    grouped.bbox.y + grouped.bbox.height);
+  const bool side_by_side =
+    rectGapPx(candidate.bbox, grouped.bbox) <= cfg.max_bbox_gap_px &&
+    std::max(x_overlap, y_overlap) >= cfg.min_bbox_axis_overlap;
+
+  return side_by_side && unionShapePlausible(candidate, group, cfg);
 }
 
 }  // namespace
@@ -96,18 +205,25 @@ bool candidateFitsGroup(
   const ContinuousMaskCandidate & candidate,
   const ContinuousMaskGroup & group,
   const std::vector<ContinuousMaskCandidate> & candidates,
-  double max_centroid_distance_m,
+  const ContinuousMaskMergeConfig & cfg,
   double & nearest_distance_m)
 {
   bool fits = false;
   nearest_distance_m = std::numeric_limits<double>::infinity();
   for (const size_t grouped_index : group.candidate_indices) {
-    const double dist =
-      blockDistance(candidate.coarse_block, candidates.at(grouped_index).coarse_block);
+    const auto & grouped = candidates.at(grouped_index);
+    if (!sameClassOrUnknown(candidate, grouped)) {
+      continue;
+    }
+
+    const double dist = blockDistance(candidate.coarse_block, grouped.coarse_block);
     if (dist < nearest_distance_m) {
       nearest_distance_m = dist;
     }
-    if (dist <= max_centroid_distance_m) {
+    if (
+      (cfg.enabled && dist <= cfg.max_centroid_distance_m) ||
+      bboxOcclusionCompatible(candidate, grouped, group, cfg))
+    {
       fits = true;
     }
   }
@@ -116,8 +232,7 @@ bool candidateFitsGroup(
 
 std::vector<ContinuousMaskGroup> groupContinuousCandidates(
   const std::vector<ContinuousMaskCandidate> & candidates,
-  bool merge_enabled,
-  double max_centroid_distance_m,
+  const ContinuousMaskMergeConfig & cfg,
   const rclcpp::Logger & logger,
   rclcpp::Clock & clock)
 {
@@ -126,14 +241,17 @@ std::vector<ContinuousMaskGroup> groupContinuousCandidates(
     const auto & candidate = candidates[candidate_index];
     size_t best_group_index = groups.size();
     double best_group_distance_m = std::numeric_limits<double>::infinity();
-    if (merge_enabled && max_centroid_distance_m > 0.0) {
+    if (
+      (cfg.enabled && cfg.max_centroid_distance_m > 0.0) ||
+      cfg.occlusion_aware_enabled)
+    {
       for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
         double nearest_distance_m = std::numeric_limits<double>::infinity();
         if (candidateFitsGroup(
             candidate,
             groups[group_index],
             candidates,
-            max_centroid_distance_m,
+            cfg,
             nearest_distance_m) &&
           nearest_distance_m < best_group_distance_m)
         {
@@ -170,16 +288,17 @@ std::vector<ContinuousMaskGroup> groupContinuousCandidates(
       candidate.detection_index,
       best_group_index,
       best_group_distance_m,
-      max_centroid_distance_m);
+      cfg.max_centroid_distance_m);
   }
 
   RCLCPP_INFO_THROTTLE(
     logger, clock, 1000,
-    "Continuous mask merge summary: candidates=%zu groups=%zu enabled=%s threshold=%.3fm",
+    "Continuous mask merge summary: candidates=%zu groups=%zu enabled=%s threshold=%.3fm occlusion_aware=%s",
     candidates.size(),
     groups.size(),
-    merge_enabled ? "true" : "false",
-    max_centroid_distance_m);
+    cfg.enabled ? "true" : "false",
+    cfg.max_centroid_distance_m,
+    cfg.occlusion_aware_enabled ? "true" : "false");
 
   return groups;
 }

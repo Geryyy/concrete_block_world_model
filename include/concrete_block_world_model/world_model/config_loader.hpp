@@ -52,8 +52,7 @@ struct WorldModelConfig
   int continuous_min_mask_pixels{2000};
   double continuous_min_mask_fill_ratio{0.15};
   int continuous_min_valid_cloud_points{120};
-  bool continuous_mask_merge_enabled{true};
-  double continuous_mask_merge_max_centroid_distance_m{0.6};
+  ContinuousMaskMergeConfig continuous_mask_merge;
   bool continuous_registration_enabled{false};
   double continuous_registration_timeout_s{3.0};
   int continuous_registration_max_per_frame{1};

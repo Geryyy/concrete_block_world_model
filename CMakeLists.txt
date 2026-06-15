@@ -131,6 +131,34 @@ if(BUILD_TESTING)
       vision_msgs
     )
   endif()
+
+  ament_add_gtest(test_continuous_perception
+    test/test_continuous_perception.cpp
+    src/world_model/continuous_perception.cpp
+    src/world_model/state_manager.cpp
+    src/utils/img_utils.cpp
+    src/utils/world_model_utils.cpp
+  )
+  if(TARGET test_continuous_perception)
+    target_include_directories(test_continuous_perception PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:include>
+      ${OpenCV_INCLUDE_DIRS}
+    )
+    target_link_libraries(test_continuous_perception
+      ${OpenCV_LIBS}
+    )
+    ament_target_dependencies(test_continuous_perception
+      concrete_block_world_model_interfaces
+      cv_bridge
+      geometry_msgs
+      rclcpp
+      sensor_msgs
+      std_msgs
+      vision_msgs
+      visualization_msgs
+    )
+  endif()
 endif()
 
 ament_package()

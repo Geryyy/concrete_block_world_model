@@ -66,6 +66,7 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
           it->second.task_status != Block::TASK_FREE;
         if (seeded_block_ids_.count(it->first) > 0U || task_protected) {
           it->second.last_seen = header.stamp;
+          refreshContinuousBlockConfidenceLocked(it->second, now_stamp.seconds());
           out.blocks.push_back(it->second);
           ++it;
           continue;
@@ -75,6 +76,7 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
           it = persistent_world_.erase(it);
           continue;
         }
+        refreshContinuousBlockConfidenceLocked(it->second, now_stamp.seconds());
         out.blocks.push_back(it->second);
         ++it;
       }
@@ -92,6 +94,22 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
       latest_planning_scene_ = buildPlanningSceneSnapshot(out.header, out.blocks);
     }
     publishWorldMarkers(out.header, out.blocks);
+  }
+
+void PerceptionOrchestratorNode::refreshContinuousBlockConfidenceLocked(
+    Block & block,
+    double now_s) const
+  {
+    if (!continuous_cfg_.filtering_enabled) {
+      return;
+    }
+    const auto track_it = continuous_tracks_.find(block.id);
+    if (track_it == continuous_tracks_.end()) {
+      return;
+    }
+    block.confidence =
+      static_cast<float>(
+        cbpwm::trackConfidence(track_it->second, continuous_cfg_.filtering, now_s));
   }
 
 void PerceptionOrchestratorNode::publishDetectionOverlay(

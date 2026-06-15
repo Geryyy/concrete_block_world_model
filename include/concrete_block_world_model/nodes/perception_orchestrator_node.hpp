@@ -111,8 +111,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_mask_pixels{2000};
     double min_mask_fill_ratio{0.15};
     int min_valid_cloud_points{120};
-    bool mask_merge_enabled{true};
-    double mask_merge_max_centroid_distance_m{0.6};
+    cbpwm::ContinuousMaskMergeConfig mask_merge;
     bool registration_enabled{false};
     double registration_timeout_s{3.0};
     int registration_max_per_frame{1};
@@ -255,6 +254,10 @@ private:
     std::shared_ptr<UpsertBlockSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
+  void refreshContinuousBlockConfidenceLocked(Block & block, double now_s) const;
+  void recordContinuousTrackMisses(
+    const std::unordered_set<std::string> & observed_track_ids,
+    double now_s);
   void publishDetectionOverlay(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const vision_msgs::msg::Detection2DArray & detections,

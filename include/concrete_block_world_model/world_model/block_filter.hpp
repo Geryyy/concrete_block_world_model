@@ -21,6 +21,11 @@ struct BlockFilterConfig
   int confirmation_window{3};
   int max_consecutive_rejections{3};
   double tentative_max_age_s{2.0};
+  bool operational_confidence_enabled{false};
+  double confidence_stale_after_s{1.0};
+  double confidence_age_half_life_s{5.0};
+  double confidence_miss_penalty{0.5};
+  double confidence_rejection_penalty{0.25};
 };
 
 enum class FilteredBlockTrackState
@@ -40,6 +45,7 @@ struct FilteredBlockTrack
   FilteredBlockTrackState state{FilteredBlockTrackState::kTentative};
   double first_update_s{0.0};
   double last_update_s{0.0};
+  double last_observation_s{0.0};
 };
 
 Eigen::Vector3d blockPosition(
@@ -75,6 +81,17 @@ bool gateAndUpdate(
 concrete_block_world_model_interfaces::msg::Block toBlockMsg(
   const FilteredBlockTrack & track,
   concrete_block_world_model_interfaces::msg::Block block);
+
+double trackConfidence(
+  const FilteredBlockTrack & track,
+  const BlockFilterConfig & cfg,
+  double now_s);
+
+concrete_block_world_model_interfaces::msg::Block toBlockMsg(
+  const FilteredBlockTrack & track,
+  concrete_block_world_model_interfaces::msg::Block block,
+  const BlockFilterConfig & cfg,
+  double now_s);
 
 Eigen::Quaterniond canonicalizeSymmetricOrientation(
   const Eigen::Quaterniond & estimate,
