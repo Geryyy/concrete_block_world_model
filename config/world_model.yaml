@@ -87,29 +87,29 @@ world_model_node:
         min_valid_cloud_points: 120
       # Combine same-frame split masks that describe the same physical block.
       mask_merge:
-        enabled: true
+        enabled: false
         max_centroid_distance_m: 0.6
-        # Merge same-class fragments that are 2D-compatible even when the
-        # gripper splits the mask and shifts each fragment's 3D centroid.
-        occlusion_aware_enabled: true
+        # Keep off in continuous mode: stacked blocks can be visually adjacent
+        # and should remain separate world-model tracks.
+        occlusion_aware_enabled: false
         max_bbox_gap_px: 24.0
         min_bbox_axis_overlap: 0.35
         min_bbox_overlap_ratio: 0.20
         max_union_aspect_ratio: 2.8
         min_union_fill_ratio: 0.08
       registration:
-        # Try full global + local registration on merged masks after coarse clustering.
-        # If registration fails, continuous mode still falls back to the coarse pose.
-        enabled: true
+        # Keep continuous mode coarse and predictable. Precise vision-based
+        # refinement is run by the BT-triggered perception modes.
+        enabled: false
         timeout_s: 3.0
         max_per_frame: 1
       association:
-        # Coarse centroids can jump more than precise ICP poses when masks are partial.
-        max_distance_m: 0.8
+        # Keep stacked blocks from collapsing into one track.
+        max_distance_m: 0.35
         max_age_s: 20.0
       filtering:
         # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
-        enabled: true
+        enabled: false
         # Static-model random-walk process noise. Position/orientation covariance
         # grows by sigma^2 * dt between accepted observations.
         position_process_sigma_m_per_sqrt_s: 0.03
