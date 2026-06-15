@@ -381,6 +381,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_registration_enabled = node.declare_parameter<bool>(
     "continuous.registration.enabled",
     false);
+  cfg.continuous_require_registration = node.declare_parameter<bool>(
+    "continuous.require_registration",
+    false);
   cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
     "continuous.registration.timeout_s",
     3.0);
@@ -587,6 +590,12 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
   clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
+  if (cfg.continuous_require_registration && !cfg.continuous_registration_enabled) {
+    RCLCPP_WARN(
+      logger,
+      "continuous.require_registration=true but continuous.registration.enabled=false; "
+      "continuous observations will be rejected.");
+  }
   clamp_min(
     cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s,
     0.0,

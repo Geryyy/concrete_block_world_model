@@ -113,6 +113,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     int min_valid_cloud_points{120};
     cbpwm::ContinuousMaskMergeConfig mask_merge;
     bool registration_enabled{false};
+    bool require_registration{false};
     double registration_timeout_s{3.0};
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};

@@ -4,13 +4,21 @@ world_model_node:
     # World model (minimal)
     # ----------------------------------
     world_model:
+      # Physical block size used for markers, planning objects, and coarse poses.
       block_dimensions_m: [0.9, 0.6, 0.6]
-      object_timeout_s: 10.0
+      # Remove non-protected blocks after this many seconds without an update.
+      object_timeout_s: 3.0
+      # Default max distance for matching an incoming observation to a known block.
       association_max_distance_m: 0.45
+      # Default max age for a known block to be considered for association.
       association_max_age_s: 20.0
+      # Ignore updates below this confidence unless explicitly targeted.
       min_update_confidence: 0.25
+      # Keep task-assigned blocks alive even when continuous perception loses them.
       protect_task_blocks_from_timeout: true
+      # Max distance for selecting an existing block as a refine target.
       refine_target_max_distance_m: 1.2
+      # Fixed obstacles published with the world markers and planning scene.
       static_scene_objects: |
         - id: post_right_1
           frame_id: world
@@ -53,16 +61,20 @@ world_model_node:
           position: [0.000000, 0.000000, 1.212500]
           dimensions: [0.450000, 0.650000, 1.512500]
       scene_discovery_coarse_fallback:
+        # Allow scene discovery to insert coarse poses when registration fails.
         enable: true
+        # Minimum cutout points required for a coarse fallback pose.
         min_points: 120
         surface_shape:
-          # bbox max(w,h)/min(w,h) <= threshold -> square front face
+          # BBox max(w,h)/min(w,h) <= threshold means square front face.
           square_ratio_thresh: 1.35
         center_offset:
           # Shift coarse centroid away from camera along viewing ray:
           # square front face -> deeper offset (0.45 m)
           # rectangular front face -> smaller offset (0.30 m)
+          # Offset used for square-looking front faces.
           square_m: 0.45
+          # Offset used for rectangular-looking front/side faces.
           rect_m: 0.30
 
     # ----------------------------------
@@ -72,99 +84,144 @@ world_model_node:
       # Once a block is marked TASK_MOVE, its world pose is owned by FK:
       # T_world_block = T_world_tcp * refine_grasped.tcp_to_block.
       fk_tracking:
+        # Update TASK_MOVE blocks from TCP FK between vision refinements.
         enabled: true
 
     # ----------------------------------
     # Continuous coarse perception mode
     # ----------------------------------
     continuous:
+      # Run continuous perception every N synchronized input frames.
       process_every_n_frames: 3
+      # Max wait for the segmentation service per continuous frame.
       segmentation_timeout_s: 1.0
+      # Max wait for mask-to-point-cloud cutout per detection.
       cutout_timeout_s: 1.0
       quality:
+        # Reject detections with fewer mask pixels.
         min_mask_pixels: 100
+        # Reject masks that fill too little of their bounding box.
         min_mask_fill_ratio: 0.05
+        # Reject cutouts with too few valid 3D points.
         min_valid_cloud_points: 120
       # Combine same-frame split masks that describe the same physical block.
       mask_merge:
+        # Merge same-frame mask fragments before registration.
         enabled: false
+        # Max 3D centroid distance for merge candidates.
         max_centroid_distance_m: 0.6
         # Keep off in continuous mode: stacked blocks can be visually adjacent
         # and should remain separate world-model tracks.
+        # Use 2D bbox compatibility to merge masks split by occlusion.
         occlusion_aware_enabled: false
+        # Max pixel gap between compatible bounding boxes.
         max_bbox_gap_px: 24.0
+        # Required overlap along one bbox axis.
         min_bbox_axis_overlap: 0.35
+        # Required 2D bbox intersection-over-union.
         min_bbox_overlap_ratio: 0.20
+        # Reject merged masks with an implausibly long union bbox.
         max_union_aspect_ratio: 2.8
+        # Reject merged masks whose union bbox is mostly empty.
         min_union_fill_ratio: 0.08
+      # Reject continuous observations unless precise registration succeeds.
+      require_registration: true
       registration:
         # Keep continuous mode simple: register each detected mask directly,
         # without mask merging, temporal filtering, or world-prior seeding.
+        # Run precise registration for accepted continuous detections.
         enabled: true
-        timeout_s: 3.0
+        # Max wait for one registration action.
+        timeout_s: 2.0
+        # Limit precise registrations per continuous frame.
         max_per_frame: 1
       association:
         # Keep stacked blocks from collapsing into one track.
-        max_distance_m: 0.35
-        max_age_s: 20.0
+        # Max distance for matching continuous observations to existing blocks.
+        max_distance_m: 0.3
+        # Max age for existing blocks to be considered by continuous association.
+        max_age_s: 10.0
       filtering:
         # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
+        # Enable probabilistic temporal filtering for continuous observations.
         enabled: false
         # Static-model random-walk process noise. Position/orientation covariance
         # grows by sigma^2 * dt between accepted observations.
+        # Position process noise for covariance growth.
         position_process_sigma_m_per_sqrt_s: 0.03
+        # Orientation process noise for covariance growth.
         orientation_process_sigma_rad_per_sqrt_s: 0.05
         # Chi-square gate for 3D position innovation. 7.81 ~= 95%.
+        # Reject observations outside this Mahalanobis gate.
         mahalanobis_gate_threshold: 7.81
         # Publish a new continuous track only after M hits inside the last N observations.
+        # Hits required before a tentative track becomes confirmed.
         confirmation_hits: 2
+        # Observation window used for tentative-track confirmation.
         confirmation_window: 3
         # Treat repeated gated jumps as a genuinely moved/reappeared block.
+        # Rejections before reinitializing a filtered track.
         max_consecutive_rejections: 3
+        # Drop tentative tracks that do not confirm within this time.
         tentative_max_age_s: 2.0
         # Optional operational confidence model for trust decisions. When enabled,
         # confidence is covariance confidence multiplied by freshness, recent hit
         # ratio, and rejection penalties.
+        # Publish confidence based on covariance, freshness, hits, and rejections.
         operational_confidence_enabled: false
+        # Start reducing confidence after this age.
         confidence_stale_after_s: 1.0
+        # Half-life for freshness confidence after the stale threshold.
         confidence_age_half_life_s: 5.0
+        # Confidence multiplier applied after missed updates.
         confidence_miss_penalty: 0.5
+        # Confidence multiplier applied after gated rejections.
         confidence_rejection_penalty: 0.25
 
     # ----------------------------------
     # Registration gating
     # ----------------------------------
+    # Minimum registration fitness accepted by the world model.
     min_fitness: 0.3
+    # Maximum registration RMSE accepted by the world model.
     max_rmse: 0.05
     # ----------------------------------
     # Input synchronization gating
     # ----------------------------------
     sync:
+      # Max timestamp delta between synchronized image/cloud inputs.
       max_delta_s: 0.08
 
     # ----------------------------------
     # Runtime debug/perf controls
     # ----------------------------------
     debug:
+      # Publish image overlays with detections and masks.
       publish_detection_overlay: true
 
     perf:
+      # Emit periodic perception timing logs and timing topics.
       log_timing: true
+      # Log timing summary every N processed frames.
       log_every_n_frames: 20
 
     # ----------------------------------
     # Object / template selection
     # ----------------------------------
+    # Object class name expected from segmentation and registration.
     object_class: "concrete_block"
 
     # ----------------------------------
     # REFINE_GRASPED robust mode (FK + ROI)
     # ----------------------------------
     refine_grasped:
+      # Crop segmentation around FK-predicted grasped block pose.
       use_fk_roi: true
+      # TCP frame used to predict the grasped block center.
       tcp_frame: "elastic/K8_tool_center_point"
-      # optional override; if empty, use image.header.frame_id (preferred)
+      # Optional override; if empty, use image.header.frame_id.
       camera_frame: ""
+      # Camera intrinsics used to project FK ROI into image space.
       camera_info_topic: "/zed2i/warped/left/camera_info"
       # Transform from TCP frame -> predicted block center used for ROI placement.
       # Units: xyz in meters, rpy in radians.
@@ -173,14 +230,18 @@ world_model_node:
       #   if TCP +Z points up  -> use negative z (e.g. [0, 0, -0.10])
       #   if TCP +Z points down -> use positive z (e.g. [0, 0,  0.10])
       tcp_to_block:
+        # Translation from TCP to block center.
         xyz: [0.0, 0.0, 0.9]
+        # Rotation from TCP to block frame as roll, pitch, yaw.
         rpy: [0.0, 0.0, 0.0]
       # ROI size around predicted block center in meters: [x_width, y_height].
       # Converted internally to pixels using camera intrinsics + predicted depth.
       roi_size_m: [1.80, 1.5]
       # Depth gate for predicted block center in camera frame [m].
       # Rejects implausible projections before registration.
+      # Minimum allowed ROI center depth.
       min_depth_m: 2.0
+      # Maximum allowed ROI center depth.
       max_depth_m: 20.0
       # Timeout for ROI segmentation service call [s].
       segmentation_timeout_s: 3.0
@@ -193,11 +254,16 @@ world_model_node:
       pose_fusion:
         # For REFINE_GRASPED:
         # translation from registration, orientation from FK (TCP-based prediction).
+        # Fuse registered position with FK orientation.
         enable: true
+        # Pose fusion strategy for grasped block refinement.
         mode: "position_from_registration_orientation_from_fk"
         # Safety gates for rejecting implausible registration jumps before world-model update.
+        # Max allowed position jump from FK prediction.
         max_translation_jump_m: 0.35
+        # Max allowed vertical jump from FK prediction.
         max_z_delta_m: 0.25
+        # Log pose-fusion accept/reject details.
         debug_log: true
 
     # ----------------------------------
@@ -206,11 +272,18 @@ world_model_node:
     # Falls back to full-image REFINE_BLOCK when ROI preconditions fail.
     # ----------------------------------
     refine_block:
+      # Use existing world pose to crop REFINE_BLOCK segmentation.
       use_pose_roi: false
+      # ROI size around the target block pose.
       roi_size_m: [1.20, 1.00]
+      # Minimum target depth for pose-based ROI projection.
       min_depth_m: 0.5
+      # Maximum target depth for pose-based ROI projection.
       max_depth_m: 30.0
+      # Max wait for ROI segmentation during REFINE_BLOCK.
       segmentation_timeout_s: 3.0
       segmentation_input:
+        # If true, black out pixels outside the ROI.
         use_black_background: false
+        # Blur kernel for pixels outside ROI when not blacked out.
         blur_kernel_size: 31

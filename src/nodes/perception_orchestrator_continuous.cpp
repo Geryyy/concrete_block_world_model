@@ -576,14 +576,35 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
             precise_block.pose.position.z,
             precise_block.confidence);
         } else {
-          RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000,
-            "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
-            group_index,
-            fragments.c_str(),
-            registration_reason.c_str());
+          if (continuous_cfg_.require_registration) {
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 2000,
+              "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; rejecting coarse fallback.",
+              group_index,
+              fragments.c_str(),
+              registration_reason.c_str());
+          } else {
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 2000,
+              "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",
+              group_index,
+              fragments.c_str(),
+              registration_reason.c_str());
+          }
         }
       }
+    }
+
+    if (continuous_cfg_.require_registration && !out_observation.precise) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Continuous observation rejected: group=%zu fragments=[%s] require_registration=true registration_enabled=%s attempts=%d/%d.",
+        group_index,
+        fragments.c_str(),
+        continuous_cfg_.registration_enabled ? "true" : "false",
+        registration_attempts,
+        continuous_cfg_.registration_max_per_frame);
+      return false;
     }
 
     return true;
