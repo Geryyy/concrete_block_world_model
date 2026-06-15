@@ -381,6 +381,10 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_registration_pose_prior_enabled = node.declare_parameter<bool>(
     "continuous.registration.pose_prior_enabled",
     cfg.continuous_registration_pose_prior_enabled);
+  cfg.continuous_registration_pose_prior_max_result_distance_m =
+    node.declare_parameter<double>(
+    "continuous.registration.pose_prior_max_result_distance_m",
+    cfg.continuous_registration_pose_prior_max_result_distance_m);
   cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
     "continuous.registration.timeout_s",
     3.0);
@@ -583,6 +587,10 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     1.0,
     "continuous.mask_merge.max_union_aspect_ratio");
   clamp_min(cfg.continuous_registration_timeout_s, 0.01, "continuous.registration.timeout_s");
+  clamp_min(
+    cfg.continuous_registration_pose_prior_max_result_distance_m,
+    0.01,
+    "continuous.registration.pose_prior_max_result_distance_m");
   clamp_min_i(cfg.continuous_registration_max_per_frame, 1, "continuous.registration.max_per_frame");
   clamp_min(
     cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");

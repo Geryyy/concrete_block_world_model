@@ -55,6 +55,7 @@ struct WorldModelConfig
   ContinuousMaskMergeConfig continuous_mask_merge;
   bool continuous_registration_enabled{false};
   bool continuous_registration_pose_prior_enabled{true};
+  double continuous_registration_pose_prior_max_result_distance_m{0.30};
   double continuous_registration_timeout_s{3.0};
   int continuous_registration_max_per_frame{1};
   double continuous_association_max_distance_m{0.8};

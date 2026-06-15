@@ -607,7 +607,26 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
         timings.registration_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - t_registration_start).count();
 
-        if (registration_ok) {
+        bool accept_precise_registration = registration_ok;
+        if (accept_precise_registration && have_registration_prior) {
+          const double prior_result_distance =
+            cbpwm::blockDistance(precise_block, registration_prior);
+          if (prior_result_distance >
+            continuous_cfg_.registration_pose_prior_max_result_distance_m)
+          {
+            accept_precise_registration = false;
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 2000,
+              "Continuous precise registration rejected: group=%zu fragments=[%s] prior=%s result_distance=%.3fm limit=%.3fm; falling back to coarse pose.",
+              group_index,
+              fragments.c_str(),
+              registration_prior.id.c_str(),
+              prior_result_distance,
+              continuous_cfg_.registration_pose_prior_max_result_distance_m);
+          }
+        }
+
+        if (accept_precise_registration) {
           out_observation.block = precise_block;
           out_observation.precise = true;
           RCLCPP_INFO_THROTTLE(
@@ -619,7 +638,7 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
             precise_block.pose.position.y,
             precise_block.pose.position.z,
             precise_block.confidence);
-        } else {
+        } else if (!registration_ok) {
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000,
             "Continuous precise registration failed: group=%zu fragments=[%s] reason=%s; falling back to coarse pose.",

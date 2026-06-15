@@ -114,6 +114,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     cbpwm::ContinuousMaskMergeConfig mask_merge;
     bool registration_enabled{false};
     bool registration_pose_prior_enabled{true};
+    double registration_pose_prior_max_result_distance_m{0.30};
     double registration_timeout_s{3.0};
     int registration_max_per_frame{1};
     double association_max_distance_m{0.8};
