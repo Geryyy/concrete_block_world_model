@@ -124,9 +124,6 @@ world_model_node:
         # Treat repeated gated jumps as a genuinely moved/reappeared block.
         max_consecutive_rejections: 3
         tentative_max_age_s: 2.0
-        # Keep no-prior tracks internal by default. Enable for discovery ablations
-        # where continuous mode is allowed to publish newly found blocks.
-        publish_new_tracks_without_prior: false
         # Optional operational confidence model for trust decisions. When enabled,
         # confidence is covariance confidence multiplied by freshness, recent hit
         # ratio, and rejection penalties.

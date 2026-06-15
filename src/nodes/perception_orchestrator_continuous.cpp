@@ -563,23 +563,11 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
     out_observation.fragment_count = group.candidate_indices.size();
     out_observation.precise = false;
 
-    Block registration_prior;
-    const bool have_registration_prior =
-      continuous_cfg_.registration_pose_prior_enabled &&
-      findContinuousRegistrationPrior(coarse_block, cloud->header, registration_prior);
-    out_observation.has_registration_prior = have_registration_prior;
-
     if (continuous_cfg_.registration_enabled) {
       if (!action_client_ || !action_client_->action_server_is_ready()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 2000,
           "Continuous precise registration skipped: registration action unavailable.");
-      } else if (continuous_cfg_.registration_pose_prior_enabled && !have_registration_prior) {
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 2000,
-          "Continuous precise registration skipped: group=%zu fragments=[%s] no registration prior; keeping coarse/filter observation.",
-          group_index,
-          fragments.c_str());
       } else if (registration_attempts >= continuous_cfg_.registration_max_per_frame) {
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 2000,
@@ -590,6 +578,10 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
       } else {
         ++registration_attempts;
         Block precise_block;
+        Block registration_prior;
+        const bool have_registration_prior =
+          continuous_cfg_.registration_pose_prior_enabled &&
+          findContinuousRegistrationPrior(coarse_block, cloud->header, registration_prior);
         std::string registration_reason;
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
@@ -842,24 +834,6 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
         return false;
       }
 
-      const auto world_it = persistent_world_.find(assigned_id);
-      if (world_it == persistent_world_.end() &&
-        !observation.has_registration_prior &&
-        !continuous_cfg_.filtering.publish_new_tracks_without_prior)
-      {
-        reason = "confirmed no-prior track kept internal";
-        RCLCPP_INFO_THROTTLE(
-          get_logger(), *get_clock(), 1000,
-          "Continuous filtering kept no-prior track internal: assigned=%s incoming=%s history=%zu/%d",
-          assigned_id.c_str(),
-          observation.block.id.c_str(),
-          track_it->second.hit_history.size(),
-          continuous_cfg_.filtering.confirmation_hits);
-        timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - t_upsert_start).count();
-        return false;
-      }
-
       block_to_upsert = cbpwm::toBlockMsg(
         track_it->second,
         observation.block,
@@ -867,6 +841,7 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
         now_s);
       block_to_upsert.id = assigned_id;
       block_to_upsert.last_seen = header.stamp;
+      const auto world_it = persistent_world_.find(assigned_id);
       if (world_it != persistent_world_.end()) {
         if (rclcpp::Time(observation.block.last_seen, get_clock()->get_clock_type()) <
           rclcpp::Time(world_it->second.last_seen, get_clock()->get_clock_type()))

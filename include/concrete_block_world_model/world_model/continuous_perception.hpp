@@ -61,7 +61,6 @@ struct BlockObservation
   uint32_t cutout_points{0};
   size_t fragment_count{1};
   bool precise{false};
-  bool has_registration_prior{false};
 };
 
 double detectionConfidence(const vision_msgs::msg::Detection2D & det);

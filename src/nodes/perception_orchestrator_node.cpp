@@ -292,7 +292,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s task_move_fk_tracking=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm occlusion_aware=%s bbox_gap=%.1fpx bbox_overlap=%.2f axis_overlap=%.2f] continuous_registration[enabled=%s pose_prior=%s prior_gate=%.3fm timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs] continuous_filtering[enabled=%s gate=%.2f confirm=%d/%d reinit_after=%d tentative_max_age=%.1fs publish_new_without_prior=%s operational_confidence=%s]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s task_move_fk_tracking=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm occlusion_aware=%s bbox_gap=%.1fpx bbox_overlap=%.2f axis_overlap=%.2f] continuous_registration[enabled=%s pose_prior=%s prior_gate=%.3fm timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs] continuous_filtering[enabled=%s gate=%.2f confirm=%d/%d reinit_after=%d tentative_max_age=%.1fs operational_confidence=%s]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       task_move_fk_tracking_enabled_ ? "true" : "false",
@@ -321,7 +321,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       continuous_cfg_.filtering.confirmation_window,
       continuous_cfg_.filtering.max_consecutive_rejections,
       continuous_cfg_.filtering.tentative_max_age_s,
-      continuous_cfg_.filtering.publish_new_tracks_without_prior ? "true" : "false",
       continuous_cfg_.filtering.operational_confidence_enabled ? "true" : "false");
     if (refine_grasped_use_fk_roi_) {
       WM_LOG(
