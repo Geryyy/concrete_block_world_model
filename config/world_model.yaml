@@ -98,9 +98,9 @@ world_model_node:
         max_union_aspect_ratio: 2.8
         min_union_fill_ratio: 0.08
       registration:
-        # Keep continuous mode coarse and predictable. Precise vision-based
-        # refinement is run by the BT-triggered perception modes.
-        enabled: false
+        # Keep continuous mode simple: register each detected mask directly,
+        # without mask merging, temporal filtering, or world-prior seeding.
+        enabled: true
         timeout_s: 3.0
         max_per_frame: 1
       association:
