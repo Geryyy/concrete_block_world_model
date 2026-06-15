@@ -98,9 +98,9 @@ world_model_node:
         max_union_aspect_ratio: 2.8
         min_union_fill_ratio: 0.08
       registration:
-        # Try full global + local registration on merged masks after coarse clustering.
-        # If registration fails, continuous mode still falls back to the coarse pose.
-        enabled: true
+        # Keep continuous mode lightweight: maintain coarse/filter state in the
+        # background, and use on-demand/refine modes for precise registration.
+        enabled: false
         pose_prior_enabled: true
         pose_prior_max_result_distance_m: 0.30
         timeout_s: 3.0
