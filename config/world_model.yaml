@@ -101,7 +101,6 @@ world_model_node:
         # Try full global + local registration on merged masks after coarse clustering.
         # If registration fails, continuous mode still falls back to the coarse pose.
         enabled: true
-        pose_prior_enabled: true
         timeout_s: 3.0
         max_per_frame: 1
       association:

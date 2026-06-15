@@ -381,9 +381,6 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.continuous_registration_enabled = node.declare_parameter<bool>(
     "continuous.registration.enabled",
     false);
-  cfg.continuous_registration_pose_prior_enabled = node.declare_parameter<bool>(
-    "continuous.registration.pose_prior_enabled",
-    cfg.continuous_registration_pose_prior_enabled);
   cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
     "continuous.registration.timeout_s",
     3.0);

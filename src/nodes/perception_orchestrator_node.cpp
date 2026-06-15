@@ -33,8 +33,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     continuous_cfg_.min_valid_cloud_points = startup.continuous_min_valid_cloud_points;
     continuous_cfg_.mask_merge = startup.continuous_mask_merge;
     continuous_cfg_.registration_enabled = startup.continuous_registration_enabled;
-    continuous_cfg_.registration_pose_prior_enabled =
-      startup.continuous_registration_pose_prior_enabled;
     continuous_cfg_.registration_timeout_s = startup.continuous_registration_timeout_s;
     continuous_cfg_.registration_max_per_frame = startup.continuous_registration_max_per_frame;
     continuous_cfg_.association_max_distance_m = startup.continuous_association_max_distance_m;
@@ -290,7 +288,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=%s task_move_fk_tracking=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm occlusion_aware=%s bbox_gap=%.1fpx bbox_overlap=%.2f axis_overlap=%.2f] continuous_registration[enabled=%s pose_prior=%s timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs] continuous_filtering[enabled=%s gate=%.2f confirm=%d/%d reinit_after=%d tentative_max_age=%.1fs operational_confidence=%s]",
+      "PerceptionOrchestratorNode ready | trigger_policy=%s task_move_fk_tracking=%s continuous_every_n=%d timeouts[seg=%.2fs cutout=%.2fs] quality[min_pixels=%d fill=%.3f min_points=%d] mask_merge[enabled=%s max_centroid_dist=%.3fm occlusion_aware=%s bbox_gap=%.1fpx bbox_overlap=%.2f axis_overlap=%.2f] continuous_registration[enabled=%s timeout=%.2fs max_per_frame=%d] continuous_assoc[max_dist=%.3fm max_age=%.1fs] continuous_filtering[enabled=%s gate=%.2f confirm=%d/%d reinit_after=%d tentative_max_age=%.1fs operational_confidence=%s]",
       perception_mode_.load() == PerceptionMode::kContinuous ?
       "CONTINUOUS_COARSE_AND_ON_DEMAND" : "ON_DEMAND_NEXT_FRAME",
       task_move_fk_tracking_enabled_ ? "true" : "false",
@@ -307,7 +305,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       continuous_cfg_.mask_merge.min_bbox_overlap_ratio,
       continuous_cfg_.mask_merge.min_bbox_axis_overlap,
       continuous_cfg_.registration_enabled ? "true" : "false",
-      continuous_cfg_.registration_pose_prior_enabled ? "true" : "false",
       continuous_cfg_.registration_timeout_s,
       continuous_cfg_.registration_max_per_frame,
       continuous_cfg_.association_max_distance_m,
