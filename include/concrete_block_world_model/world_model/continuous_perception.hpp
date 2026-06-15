@@ -62,9 +62,6 @@ struct BlockObservation
   size_t fragment_count{1};
   bool precise{false};
   bool has_registration_prior{false};
-  bool has_mask_centroid{false};
-  double mask_centroid_x_px{0.0};
-  double mask_centroid_y_px{0.0};
 };
 
 double detectionConfidence(const vision_msgs::msg::Detection2D & det);

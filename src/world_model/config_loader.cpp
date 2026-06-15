@@ -435,26 +435,6 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<bool>(
     "continuous.filtering.publish_new_tracks_without_prior",
     cfg.continuous_filtering.publish_new_tracks_without_prior);
-  cfg.continuous_filtering.temporal_bootstrap_enabled =
-    node.declare_parameter<bool>(
-    "continuous.filtering.temporal_bootstrap_enabled",
-    cfg.continuous_filtering.temporal_bootstrap_enabled);
-  cfg.continuous_filtering.temporal_bootstrap_min_stable_observations =
-    node.declare_parameter<int>(
-    "continuous.filtering.temporal_bootstrap_min_stable_observations",
-    cfg.continuous_filtering.temporal_bootstrap_min_stable_observations);
-  cfg.continuous_filtering.temporal_bootstrap_max_mask_area_change_ratio =
-    node.declare_parameter<double>(
-    "continuous.filtering.temporal_bootstrap_max_mask_area_change_ratio",
-    cfg.continuous_filtering.temporal_bootstrap_max_mask_area_change_ratio);
-  cfg.continuous_filtering.temporal_bootstrap_max_mask_centroid_jump_px =
-    node.declare_parameter<double>(
-    "continuous.filtering.temporal_bootstrap_max_mask_centroid_jump_px",
-    cfg.continuous_filtering.temporal_bootstrap_max_mask_centroid_jump_px);
-  cfg.continuous_filtering.temporal_bootstrap_max_position_jump_m =
-    node.declare_parameter<double>(
-    "continuous.filtering.temporal_bootstrap_max_position_jump_m",
-    cfg.continuous_filtering.temporal_bootstrap_max_position_jump_m);
   cfg.continuous_filtering.operational_confidence_enabled =
     node.declare_parameter<bool>(
     "continuous.filtering.operational_confidence_enabled",
@@ -650,22 +630,6 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     cfg.continuous_filtering.tentative_max_age_s,
     0.1,
     "continuous.filtering.tentative_max_age_s");
-  clamp_min_i(
-    cfg.continuous_filtering.temporal_bootstrap_min_stable_observations,
-    1,
-    "continuous.filtering.temporal_bootstrap_min_stable_observations");
-  clamp_min(
-    cfg.continuous_filtering.temporal_bootstrap_max_mask_area_change_ratio,
-    0.0,
-    "continuous.filtering.temporal_bootstrap_max_mask_area_change_ratio");
-  clamp_min(
-    cfg.continuous_filtering.temporal_bootstrap_max_mask_centroid_jump_px,
-    0.0,
-    "continuous.filtering.temporal_bootstrap_max_mask_centroid_jump_px");
-  clamp_min(
-    cfg.continuous_filtering.temporal_bootstrap_max_position_jump_m,
-    0.0,
-    "continuous.filtering.temporal_bootstrap_max_position_jump_m");
   clamp_min(
     cfg.continuous_filtering.confidence_stale_after_s,
     0.0,

@@ -82,45 +82,6 @@ double covarianceTraceToConfidence(const Eigen::Matrix3d & covariance)
   return std::clamp(confidence, 0.0, 1.0);
 }
 
-bool temporalObservationStable(
-  const FilteredBlockTrack & track,
-  const BlockObservation & observation,
-  const BlockFilterConfig & cfg)
-{
-  bool stable = true;
-
-  if (track.last_mask_pixels > 0 && observation.mask_pixels > 0) {
-    const double delta = std::abs(
-      static_cast<double>(observation.mask_pixels - track.last_mask_pixels));
-    const double denom = static_cast<double>(std::max(observation.mask_pixels, track.last_mask_pixels));
-    stable = stable &&
-      (delta / std::max(1.0, denom) <= cfg.temporal_bootstrap_max_mask_area_change_ratio);
-  }
-
-  if (track.has_last_mask_centroid && observation.has_mask_centroid) {
-    const double dx = observation.mask_centroid_x_px - track.last_mask_centroid_x_px;
-    const double dy = observation.mask_centroid_y_px - track.last_mask_centroid_y_px;
-    stable = stable &&
-      (std::sqrt(dx * dx + dy * dy) <= cfg.temporal_bootstrap_max_mask_centroid_jump_px);
-  }
-
-  const double position_jump = (blockPosition(observation.block) - track.position).norm();
-  stable = stable && (position_jump <= cfg.temporal_bootstrap_max_position_jump_m);
-  return stable;
-}
-
-void updateTemporalObservationState(
-  FilteredBlockTrack & track,
-  const BlockObservation & observation,
-  bool stable)
-{
-  track.stable_observations = stable ? track.stable_observations + 1 : 1;
-  track.last_mask_pixels = observation.mask_pixels;
-  track.has_last_mask_centroid = observation.has_mask_centroid;
-  track.last_mask_centroid_x_px = observation.mask_centroid_x_px;
-  track.last_mask_centroid_y_px = observation.mask_centroid_y_px;
-}
-
 }  // namespace
 
 Eigen::Vector3d blockPosition(const Block & block)
@@ -158,7 +119,6 @@ FilteredBlockTrack initializeTrack(
   track.first_update_s = stamp_s;
   track.last_update_s = stamp_s;
   track.last_observation_s = stamp_s;
-  updateTemporalObservationState(track, observation, true);
   pushHistory(track, true, cfg);
   return track;
 }
@@ -263,7 +223,6 @@ bool gateAndUpdate(
     return false;
   }
 
-  const bool temporal_stable = temporalObservationStable(track, observation, cfg);
   const Eigen::Vector3d z = blockPosition(observation.block);
   const Eigen::Matrix3d r = positionObservationCovariance(observation);
   const Eigen::Matrix3d s = track.position_covariance + r;
@@ -292,21 +251,9 @@ bool gateAndUpdate(
   }
 
   track.consecutive_rejections = 0;
-  updateTemporalObservationState(track, observation, temporal_stable);
   pushHistory(track, true, cfg);
   reason = "accepted";
   return true;
-}
-
-bool trackHasStableTemporalBootstrap(
-  const FilteredBlockTrack & track,
-  const BlockFilterConfig & cfg)
-{
-  if (!cfg.temporal_bootstrap_enabled) {
-    return false;
-  }
-  return track.stable_observations >=
-         std::max(1, cfg.temporal_bootstrap_min_stable_observations);
 }
 
 Block toBlockMsg(

@@ -3,7 +3,6 @@
 #include "concrete_block_world_model/utils/img_utils.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 
 namespace
@@ -563,12 +562,6 @@ bool PerceptionOrchestratorNode::buildContinuousObservation(
     out_observation.cutout_points = merged_cutout_cloud.width * merged_cutout_cloud.height;
     out_observation.fragment_count = group.candidate_indices.size();
     out_observation.precise = false;
-    const cv::Moments mask_moments = cv::moments(group.merged_mask, true);
-    if (std::abs(mask_moments.m00) > 1.0e-6) {
-      out_observation.has_mask_centroid = true;
-      out_observation.mask_centroid_x_px = mask_moments.m10 / mask_moments.m00;
-      out_observation.mask_centroid_y_px = mask_moments.m01 / mask_moments.m00;
-    }
 
     Block registration_prior;
     const bool have_registration_prior =
@@ -850,23 +843,18 @@ bool PerceptionOrchestratorNode::applyContinuousObservation(
       }
 
       const auto world_it = persistent_world_.find(assigned_id);
-      const bool temporal_bootstrap_ok =
-        cbpwm::trackHasStableTemporalBootstrap(track_it->second, continuous_cfg_.filtering);
       if (world_it == persistent_world_.end() &&
         !observation.has_registration_prior &&
-        !continuous_cfg_.filtering.publish_new_tracks_without_prior &&
-        !temporal_bootstrap_ok)
+        !continuous_cfg_.filtering.publish_new_tracks_without_prior)
       {
-        reason = "confirmed no-prior track awaiting temporal stability";
+        reason = "confirmed no-prior track kept internal";
         RCLCPP_INFO_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Continuous filtering kept no-prior track internal: assigned=%s incoming=%s history=%zu/%d stable=%d/%d",
+          "Continuous filtering kept no-prior track internal: assigned=%s incoming=%s history=%zu/%d",
           assigned_id.c_str(),
           observation.block.id.c_str(),
           track_it->second.hit_history.size(),
-          continuous_cfg_.filtering.confirmation_hits,
-          track_it->second.stable_observations,
-          continuous_cfg_.filtering.temporal_bootstrap_min_stable_observations);
+          continuous_cfg_.filtering.confirmation_hits);
         timings.upsert_ms += std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - t_upsert_start).count();
         return false;
