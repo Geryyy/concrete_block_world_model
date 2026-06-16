@@ -183,6 +183,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     const auto marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       "block_world_model_markers", marker_qos);
+    goal_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      "block_goal_markers", marker_qos);
     continuous_timing_seg_ms_pub_ =
       create_publisher<std_msgs::msg::Float64>("timing/continuous_seg_ms", 10);
     continuous_timing_cutout_ms_pub_ =
@@ -272,6 +274,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "~/upsert_block",
       std::bind(
         &PerceptionOrchestratorNode::handleUpsertBlock,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
+    set_block_goal_srv_ = create_service<SetBlockGoalSrv>(
+      "~/set_block_goal",
+      std::bind(
+        &PerceptionOrchestratorNode::handleSetBlockGoal,
         this,
         std::placeholders::_1,
         std::placeholders::_2));

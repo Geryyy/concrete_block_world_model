@@ -182,6 +182,10 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
   }
 
   for (const auto & b : blocks) {
+    // Goal-only placeholders (no actual pose yet) are shown via goal markers, not here.
+    if (b.pose_status == Block::POSE_UNKNOWN && b.goal_status == Block::GOAL_SET) {
+      continue;
+    }
     visualization_msgs::msg::Marker m;
     m.header = marker_header;
     m.ns = "cbp_blocks";
@@ -299,6 +303,67 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
         ma.markers.push_back(std::move(arrow));
       }
     }
+  }
+
+  return ma;
+}
+
+visualization_msgs::msg::MarkerArray buildGoalMarkers(
+  const std_msgs::msg::Header & header,
+  const std::vector<Block> & blocks,
+  const std::string & world_frame,
+  const std::array<double, 3> & block_dimensions_m)
+{
+  visualization_msgs::msg::MarkerArray ma;
+  auto marker_header = header;
+  marker_header.frame_id = world_frame;
+
+  visualization_msgs::msg::Marker clear;
+  clear.header = marker_header;
+  clear.ns = "";
+  clear.id = 0;
+  clear.type = visualization_msgs::msg::Marker::CUBE;
+  clear.action = visualization_msgs::msg::Marker::DELETEALL;
+  ma.markers.push_back(clear);
+
+  int marker_id = 1;
+  for (const auto & b : blocks) {
+    if (b.goal_status != Block::GOAL_SET) {
+      continue;
+    }
+
+    visualization_msgs::msg::Marker m;
+    m.header = marker_header;
+    m.ns = "cbp_block_goals";
+    m.id = marker_id++;
+    m.type = visualization_msgs::msg::Marker::CUBE;
+    m.action = visualization_msgs::msg::Marker::ADD;
+    m.pose = b.goal_pose;
+    m.scale.x = block_dimensions_m[0];
+    m.scale.y = block_dimensions_m[1];
+    m.scale.z = block_dimensions_m[2];
+    // Opaque steel-blue target cube, distinct from the translucent live blocks.
+    m.color.r = 0.2f;
+    m.color.g = 0.45f;
+    m.color.b = 0.9f;
+    m.color.a = 1.0f;
+    ma.markers.push_back(std::move(m));
+
+    visualization_msgs::msg::Marker label;
+    label.header = marker_header;
+    label.ns = "cbp_block_goal_ids";
+    label.id = marker_id++;
+    label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    label.action = visualization_msgs::msg::Marker::ADD;
+    label.pose = b.goal_pose;
+    label.pose.position.z += 0.5 * block_dimensions_m[2] + 0.2;
+    label.scale.z = 0.15;
+    label.color.r = 1.0f;
+    label.color.g = 1.0f;
+    label.color.b = 1.0f;
+    label.color.a = 1.0f;
+    label.text = b.id;
+    ma.markers.push_back(std::move(label));
   }
 
   return ma;

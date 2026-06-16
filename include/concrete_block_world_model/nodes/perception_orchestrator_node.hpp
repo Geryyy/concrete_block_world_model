@@ -43,6 +43,7 @@
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
+#include "concrete_block_world_model_interfaces/srv/set_block_goal.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
 #include "concrete_block_world_model/world_model/block_filter.hpp"
@@ -70,6 +71,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
   using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
+  using SetBlockGoalSrv = concrete_block_world_model_interfaces::srv::SetBlockGoal;
   using RegisterBlock = concrete_block_perception_interfaces::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 
@@ -257,6 +259,9 @@ private:
   void handleUpsertBlock(
     const std::shared_ptr<UpsertBlockSrv::Request> request,
     std::shared_ptr<UpsertBlockSrv::Response> response);
+  void handleSetBlockGoal(
+    const std::shared_ptr<SetBlockGoalSrv::Request> request,
+    std::shared_ptr<SetBlockGoalSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
   void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
@@ -347,6 +352,7 @@ private:
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
+  rclcpp::Service<SetBlockGoalSrv>::SharedPtr set_block_goal_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
@@ -357,6 +363,7 @@ private:
 
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr goal_marker_pub_;
   size_t last_published_block_count_{0};
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;

@@ -272,3 +272,55 @@ void PerceptionOrchestratorNode::handleUpsertBlock(
       block.pose.position.z,
       world_frame_.c_str());
   }
+
+void PerceptionOrchestratorNode::handleSetBlockGoal(
+    const std::shared_ptr<SetBlockGoalSrv::Request> request,
+    std::shared_ptr<SetBlockGoalSrv::Response> response)
+  {
+    if (request->block_id.empty()) {
+      response->success = false;
+      response->message = "block_id must not be empty.";
+      return;
+    }
+    if (!request->frame_id.empty() && request->frame_id != world_frame_) {
+      response->success = false;
+      response->message =
+        "frame_id '" + request->frame_id + "' != world_frame '" + world_frame_ + "'";
+      RCLCPP_WARN(get_logger(), "SetBlockGoal rejected: %s", response->message.c_str());
+      return;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      // Find-or-create: a block may already exist (with a perceived/actual pose)
+      // and only gain a goal, or it may be goal-only until perceived/placed.
+      Block & block = persistent_world_[request->block_id];
+      if (block.id.empty()) {
+        block.id = request->block_id;
+        block.pose_status = Block::POSE_UNKNOWN;
+        block.task_status = Block::TASK_FREE;
+        block.confidence = 1.0f;
+        setDefaultPoseCovariance(block);
+      }
+      block.goal_pose = request->goal_pose;
+      block.goal_status = Block::GOAL_SET;
+      block.last_seen = now();
+      seeded_block_ids_.insert(request->block_id);
+    }
+
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = world_frame_;
+    publishPersistentWorld(header);
+
+    response->success = true;
+    response->message = "OK";
+    RCLCPP_INFO(
+      get_logger(),
+      "SetBlockGoal: '%s' goal=(%.2f, %.2f, %.2f) in '%s'",
+      request->block_id.c_str(),
+      request->goal_pose.position.x,
+      request->goal_pose.position.y,
+      request->goal_pose.position.z,
+      world_frame_.c_str());
+  }

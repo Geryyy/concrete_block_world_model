@@ -41,4 +41,12 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std::string & world_frame,
   const std::array<double, 3> & block_dimensions_m);
 
+// Opaque cubes at each block's assembly goal_pose (where goal_status == GOAL_SET),
+// for visualizing the target wall alongside the live (translucent) blocks.
+visualization_msgs::msg::MarkerArray buildGoalMarkers(
+  const std_msgs::msg::Header & header,
+  const std::vector<concrete_block_world_model_interfaces::msg::Block> & blocks,
+  const std::string & world_frame,
+  const std::array<double, 3> & block_dimensions_m);
+
 }  // namespace cbp::world_model

@@ -19,6 +19,10 @@ void PerceptionOrchestratorNode::publishWorldMarkers(const std_msgs::msg::Header
       marker_header, blocks, static_scene_world, world_frame_, block_dimensions_m_);
     marker_pub_->publish(markers);
 
+    const auto goal_markers = cbpwm::buildGoalMarkers(
+      marker_header, blocks, world_frame_, block_dimensions_m_);
+    goal_marker_pub_->publish(goal_markers);
+
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 3000,
       "Published marker array: markers=%zu blocks=%zu static_objects=%zu frame=%s",
