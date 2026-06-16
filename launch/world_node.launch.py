@@ -50,6 +50,7 @@ def generate_launch_description():
                     ("points", "/seyond_points"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
+                    ("block_goal_markers", "/cbp/block_goal_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
                     ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
                     ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
