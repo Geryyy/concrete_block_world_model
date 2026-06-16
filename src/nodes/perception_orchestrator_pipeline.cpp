@@ -123,9 +123,9 @@ void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg:
       return;
     }
 
-    geometry_msgs::msg::Pose fk_pose;
+    Eigen::Matrix4d T_world_tcp;
     std::string reason;
-    if (!lookupTaskMoveFkPose(header, fk_pose, reason)) {
+    if (!lookupTcpInWorld(header, T_world_tcp, reason)) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "TASK_MOVE FK tracking skipped for %zu block(s): %s",
@@ -141,6 +141,23 @@ void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg:
       if (it == persistent_world_.end() || it->second.task_status != Block::TASK_MOVE) {
         continue;
       }
+
+      // Use the per-block captured grasp offset if available, else the nominal.
+      const auto off_it = task_move_grasp_offsets_.find(id);
+      const Eigen::Matrix4d T_tcp_block =
+        (off_it != task_move_grasp_offsets_.end()) ? off_it->second : T_tcp_block_;
+      const Eigen::Matrix4d T_world_block = T_world_tcp * T_tcp_block;
+      const Eigen::Vector3d p_world = T_world_block.block<3, 1>(0, 3);
+      const Eigen::Quaterniond q_world =
+        Eigen::Quaterniond(T_world_block.block<3, 3>(0, 0)).normalized();
+      geometry_msgs::msg::Pose fk_pose;
+      fk_pose.position.x = p_world.x();
+      fk_pose.position.y = p_world.y();
+      fk_pose.position.z = p_world.z();
+      fk_pose.orientation.x = q_world.x();
+      fk_pose.orientation.y = q_world.y();
+      fk_pose.orientation.z = q_world.z();
+      fk_pose.orientation.w = q_world.w();
 
       it->second.pose = fk_pose;
       it->second.pose_status = Block::POSE_PRECISE;

@@ -215,9 +215,9 @@ private:
     Eigen::Vector3d & p_camera,
     Eigen::Quaterniond & q_world,
     std::string & reason);
-  bool lookupTaskMoveFkPose(
+  bool lookupTcpInWorld(
     const std_msgs::msg::Header & header,
-    geometry_msgs::msg::Pose & pose_world,
+    Eigen::Matrix4d & T_world_tcp,
     std::string & reason);
   bool resolveCameraFrame(
     const std_msgs::msg::Header & header,
@@ -434,6 +434,10 @@ private:
   std::string refine_grasped_camera_frame_{};
   std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};
   Eigen::Matrix4d T_tcp_block_{Eigen::Matrix4d::Identity()};
+  // Per-block captured TCP->block grasp offsets, overriding the nominal
+  // T_tcp_block_ for FK tracking while a block is TASK_MOVE. Set from the
+  // SetBlockTaskStatus grasp_offset; guarded by persistent_world_mutex_.
+  std::unordered_map<std::string, Eigen::Matrix4d> task_move_grasp_offsets_;
   cbpwm::RoiInputConfig refine_grasped_roi_cfg_;
   bool refine_block_use_pose_roi_{false};
   cbpwm::RoiInputConfig refine_block_roi_cfg_;

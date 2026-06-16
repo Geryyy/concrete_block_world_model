@@ -175,6 +175,20 @@ void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
       it->second.task_status = target_task_status;
       // Keep block alive and reflect semantic state change immediately.
       it->second.last_seen = publish_header.stamp;
+
+      // Track the captured grasp offset for FK pose tracking while carrying;
+      // clear it once the block is no longer being moved.
+      if (target_task_status == Block::TASK_MOVE && request->has_grasp_offset) {
+        const auto & p = request->grasp_offset.position;
+        const auto & o = request->grasp_offset.orientation;
+        Eigen::Matrix4d m = Eigen::Matrix4d::Identity();
+        m.block<3, 3>(0, 0) =
+          Eigen::Quaterniond(o.w, o.x, o.y, o.z).normalized().toRotationMatrix();
+        m.block<3, 1>(0, 3) = Eigen::Vector3d(p.x, p.y, p.z);
+        task_move_grasp_offsets_[block_id] = m;
+      } else if (target_task_status != Block::TASK_MOVE) {
+        task_move_grasp_offsets_.erase(block_id);
+      }
     }
 
     publishPersistentWorld(publish_header);

@@ -97,9 +97,9 @@ bool PerceptionOrchestratorNode::lookupPredictedGraspedPose(
     }
   }
 
-bool PerceptionOrchestratorNode::lookupTaskMoveFkPose(
+bool PerceptionOrchestratorNode::lookupTcpInWorld(
     const std_msgs::msg::Header & header,
-    geometry_msgs::msg::Pose & pose_world,
+    Eigen::Matrix4d & T_world_tcp,
     std::string & reason)
   {
     if (!tf_buffer_) {
@@ -113,20 +113,7 @@ bool PerceptionOrchestratorNode::lookupTaskMoveFkPose(
         refine_grasped_tcp_frame_,
         rclcpp::Time(header.stamp),
         rclcpp::Duration::from_seconds(0.2));
-
-      const Eigen::Matrix4d T_world_tcp = transformToEigen(tf_world_tcp);
-      const Eigen::Matrix4d T_world_block = T_world_tcp * T_tcp_block_;
-      const Eigen::Vector3d p_world = T_world_block.block<3, 1>(0, 3);
-      const Eigen::Quaterniond q_world =
-        Eigen::Quaterniond(T_world_block.block<3, 3>(0, 0)).normalized();
-
-      pose_world.position.x = p_world.x();
-      pose_world.position.y = p_world.y();
-      pose_world.position.z = p_world.z();
-      pose_world.orientation.x = q_world.x();
-      pose_world.orientation.y = q_world.y();
-      pose_world.orientation.z = q_world.z();
-      pose_world.orientation.w = q_world.w();
+      T_world_tcp = transformToEigen(tf_world_tcp);
       return true;
     } catch (const tf2::TransformException & ex) {
       reason = std::string("TF lookup failed: ") + ex.what();
