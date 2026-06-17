@@ -222,7 +222,7 @@ visualization_msgs::msg::MarkerArray buildWorldMarkers(
     } else if (b.task_status == Block::TASK_MOVE) {
       m.color.a = 0.85f;
     } else if (b.task_status == Block::TASK_PLACED) {
-      m.color.a = 0.7f;
+      m.color.a = 0.95f;   // placed block: near-solid so the actual pose reads clearly
     }
     ma.markers.push_back(std::move(m));
 
@@ -342,11 +342,13 @@ visualization_msgs::msg::MarkerArray buildGoalMarkers(
     m.scale.x = block_dimensions_m[0];
     m.scale.y = block_dimensions_m[1];
     m.scale.z = block_dimensions_m[2];
-    // Opaque steel-blue target cube, distinct from the translucent live blocks.
+    // Translucent steel-blue target cube. Kept see-through so the actual placed
+    // block (solid green) and its goal pose stay visible together, making the
+    // placement error easy to read off in RViz.
     m.color.r = 0.2f;
     m.color.g = 0.45f;
     m.color.b = 0.9f;
-    m.color.a = 1.0f;
+    m.color.a = 0.3f;
     ma.markers.push_back(std::move(m));
 
     visualization_msgs::msg::Marker label;

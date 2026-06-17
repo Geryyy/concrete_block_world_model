@@ -265,7 +265,13 @@ void PerceptionOrchestratorNode::handleUpsertBlock(
 
     {
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-      persistent_world_[block.id] = block;
+      // Preserve any goal already assigned to this block: an actual-pose upsert
+      // (e.g. placed-from-gripper) must not wipe goal_pose/goal_status, otherwise
+      // the goal (target) marker would vanish the moment the block is placed.
+      Block & existing = persistent_world_[block.id];
+      block.goal_pose = existing.goal_pose;
+      block.goal_status = existing.goal_status;
+      existing = block;
       seeded_block_ids_.insert(block.id);
     }
 

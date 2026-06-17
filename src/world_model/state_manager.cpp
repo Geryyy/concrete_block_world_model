@@ -124,6 +124,12 @@ bool upsertRegisteredBlock(
     if (previous.task_status != concrete_block_world_model_interfaces::msg::Block::TASK_UNKNOWN) {
       incoming.task_status = previous.task_status;
     }
+
+    // Perception observations never carry an assembly goal, so keep whatever
+    // goal the block already had; otherwise re-detection erases its target
+    // (goal) marker, same way a raw upsert used to.
+    incoming.goal_pose = previous.goal_pose;
+    incoming.goal_status = previous.goal_status;
   } else {
     incoming.task_status = concrete_block_world_model_interfaces::msg::Block::TASK_FREE;
   }
