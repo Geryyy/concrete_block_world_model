@@ -291,7 +291,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       [this]() {
         const BlockArray snapshot = latestWorldSnapshot();
         if (!snapshot.blocks.empty() || !static_scene_objects_.empty()) {
-          publishWorldMarkers(snapshot.header, snapshot.blocks);
+          std_msgs::msg::Header header;
+          header.stamp = now();
+          header.frame_id =
+            snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
+          publishPersistentWorld(header);
         }
       });
 

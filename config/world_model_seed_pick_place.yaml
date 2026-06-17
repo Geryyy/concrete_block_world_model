@@ -18,14 +18,14 @@ world_model_node:
       initial_blocks: |
         - id: c0_b0
           frame_id: world
-          position: [-11.0, 0, 0.3]
+          position: [-13.0, 0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: c0_b1
           frame_id: world
-          position: [-13.0, 0, 0.3]
+          position: [-14.0, 0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
