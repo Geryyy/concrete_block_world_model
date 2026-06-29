@@ -286,6 +286,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         std::placeholders::_1,
         std::placeholders::_2));
 
+    clear_block_goals_srv_ = create_service<ClearBlockGoalsSrv>(
+      "~/clear_block_goals",
+      std::bind(
+        &PerceptionOrchestratorNode::handleClearBlockGoals,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     marker_refresh_timer_ = create_wall_timer(
       std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {

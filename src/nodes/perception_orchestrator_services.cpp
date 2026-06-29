@@ -3,6 +3,8 @@
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
+#include <unordered_set>
+
 void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
   {
     std::lock_guard<std::mutex> lock(one_shot_mutex_);
@@ -343,4 +345,56 @@ void PerceptionOrchestratorNode::handleSetBlockGoal(
       request->goal_pose.position.y,
       request->goal_pose.position.z,
       world_frame_.c_str());
+  }
+
+void PerceptionOrchestratorNode::handleClearBlockGoals(
+    const std::shared_ptr<ClearBlockGoalsSrv::Request> request,
+    std::shared_ptr<ClearBlockGoalsSrv::Response> response)
+  {
+    const bool clear_all = request->block_ids.empty();
+    const std::unordered_set<std::string> requested_ids(
+      request->block_ids.begin(), request->block_ids.end());
+
+    uint32_t cleared_count = 0;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      for (auto it = persistent_world_.begin(); it != persistent_world_.end();) {
+        const bool selected =
+          clear_all || requested_ids.find(it->first) != requested_ids.end();
+        if (!selected || it->second.goal_status != Block::GOAL_SET) {
+          ++it;
+          continue;
+        }
+
+        ++cleared_count;
+        if (it->second.pose_status == Block::POSE_UNKNOWN) {
+          seeded_block_ids_.erase(it->first);
+          continuous_tracks_.erase(it->first);
+          it = persistent_world_.erase(it);
+          continue;
+        }
+
+        it->second.goal_status = Block::GOAL_NONE;
+        it->second.goal_pose = geometry_msgs::msg::Pose{};
+        it->second.last_seen = now();
+        ++it;
+      }
+    }
+
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = world_frame_;
+    publishPersistentWorld(header);
+
+    response->success = true;
+    response->cleared_count = cleared_count;
+    response->message =
+      clear_all ?
+      "Cleared all block goals." :
+      "Cleared selected block goals.";
+    RCLCPP_INFO(
+      get_logger(),
+      "ClearBlockGoals: cleared=%u scope=%s",
+      cleared_count,
+      clear_all ? "<all>" : "<selected>");
   }

@@ -20,46 +20,46 @@ world_model_node:
       refine_target_max_distance_m: 1.2
       # Fixed obstacles published with the world markers and planning scene.
       static_scene_objects: |
-        - id: post_right_1
-          frame_id: world
-          position: [-5.558000, 1.652500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: post_right_2
-          frame_id: world
-          position: [-2.574000, 1.652500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: post_right_3
-          frame_id: world
-          position: [-1.361500, 1.652500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: post_left_1
-          frame_id: world
-          position: [-5.558000, -0.952500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: post_left_2
-          frame_id: world
-          position: [-2.574000, -0.952500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: post_left_3
-          frame_id: world
-          position: [-1.361500, -0.952500, 1.097000]
-          dimensions: [0.140000, 0.152500, 1.060000]
-        - id: truck_main
-          frame_id: world
-          position: [-7.384000, 0.350000, 0.563000]
-          dimensions: [1.150000, 1.455000, 1.844000]
-        - id: truck_rear
-          frame_id: world
-          position: [-0.315000, 0.350000, -0.334500]
-          dimensions: [0.200000, 2.460000, 0.846500]
-        - id: truck_bed
-          frame_id: world
-          position: [-3.158000, 0.350000, -0.548150]
-          dimensions: [3.158000, 1.255000, 0.662850]
-        - id: slewing_column
-          frame_id: world
-          position: [0.000000, 0.000000, 1.212500]
-          dimensions: [0.450000, 0.650000, 1.512500]
+        # - id: post_right_1
+        #   frame_id: world
+        #   position: [-5.558000, 1.652500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: post_right_2
+        #   frame_id: world
+        #   position: [-2.574000, 1.652500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: post_right_3
+        #   frame_id: world
+        #   position: [-1.361500, 1.652500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: post_left_1
+        #   frame_id: world
+        #   position: [-5.558000, -0.952500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: post_left_2
+        #   frame_id: world
+        #   position: [-2.574000, -0.952500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: post_left_3
+        #   frame_id: world
+        #   position: [-1.361500, -0.952500, 1.097000]
+        #   dimensions: [0.140000, 0.152500, 1.060000]
+        # - id: truck_main
+        #   frame_id: world
+        #   position: [-7.384000, 0.350000, 0.563000]
+        #   dimensions: [1.150000, 1.455000, 1.844000]
+        # - id: truck_rear
+        #   frame_id: world
+        #   position: [-0.315000, 0.350000, -0.334500]
+        #   dimensions: [0.200000, 2.460000, 0.846500]
+        # - id: truck_bed
+        #   frame_id: world
+        #   position: [-3.158000, 0.350000, -0.548150]
+        #   dimensions: [3.158000, 1.255000, 0.662850]
+        # - id: slewing_column
+        #   frame_id: world
+        #   position: [0.000000, 0.000000, 1.212500]
+        #   dimensions: [0.450000, 0.650000, 1.512500]
 
       # ---- Advanced / experimental scene-discovery fallback ----
       # Kept visible for ablation; normal continuous operation should rely on

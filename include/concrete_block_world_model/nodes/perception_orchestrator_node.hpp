@@ -39,6 +39,7 @@
 #include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_coarse_blocks.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
+#include "concrete_block_world_model_interfaces/srv/clear_block_goals.hpp"
 #include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
@@ -72,6 +73,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
   using SetBlockGoalSrv = concrete_block_world_model_interfaces::srv::SetBlockGoal;
+  using ClearBlockGoalsSrv = concrete_block_world_model_interfaces::srv::ClearBlockGoals;
   using RegisterBlock = concrete_block_perception_interfaces::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 
@@ -262,6 +264,9 @@ private:
   void handleSetBlockGoal(
     const std::shared_ptr<SetBlockGoalSrv::Request> request,
     std::shared_ptr<SetBlockGoalSrv::Response> response);
+  void handleClearBlockGoals(
+    const std::shared_ptr<ClearBlockGoalsSrv::Request> request,
+    std::shared_ptr<ClearBlockGoalsSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
   void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
@@ -353,6 +358,7 @@ private:
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
   rclcpp::Service<SetBlockGoalSrv>::SharedPtr set_block_goal_srv_;
+  rclcpp::Service<ClearBlockGoalsSrv>::SharedPtr clear_block_goals_srv_;
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
