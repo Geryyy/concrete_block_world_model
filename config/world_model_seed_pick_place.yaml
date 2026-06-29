@@ -8,7 +8,8 @@
 # `world`; the single world -> K0_mounting_base conversion happens in the
 # GetNextAssemblyTask BT plugin. Keep this seed in the SAME frame as wall_spec_example.yaml.
 #
-# Block IDs MUST match the wall plan being built (see wall_plans.yaml: example_wall).
+# Block IDs are physical world-model IDs. The wall plan maps semantic slots
+# (c0_b0, c0_b1, ...) onto these IDs via block_bindings.
 # Block dimensions: 0.9 x 0.6 x 0.6 m (X=depth, Y, Z=height).
 # Positions sampled on flat terrain (z = terrain_z + 0.3 block half-height).
 world_model_node:
@@ -16,35 +17,35 @@ world_model_node:
     world_frame: world
     world_model:
       initial_blocks: |
-        - id: c0_b0
+        - id: block_0
           frame_id: world
           position: [-13.0, 0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
-        - id: c0_b1
+        - id: block_1
           frame_id: world
           position: [-14.0, 0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
-        - id: c0_b2
+        - id: block_2
           frame_id: world
           position: [-15, 0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
-        - id: c1_b0
+        - id: block_3
           frame_id: world
           position: [-11, -1.500, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
-        - id: c1_b1
+        - id: block_4
           frame_id: world
           position: [-13, -1.500, 0.3]
           yaw_deg: 0.0

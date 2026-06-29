@@ -165,6 +165,9 @@ PlanningScene PerceptionOrchestratorNode::buildPlanningSceneSnapshot(
     }
 
     for (const auto & block : blocks) {
+      if (block.pose_status == Block::POSE_UNKNOWN) {
+        continue;
+      }
       PlanningSceneObject object;
       object.id = block.id;
       object.frame_id = world_frame_;
