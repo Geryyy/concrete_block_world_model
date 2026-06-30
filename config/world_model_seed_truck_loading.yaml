@@ -17,13 +17,13 @@ world_model_node:
     world_frame: world
     world_model:
       initial_blocks: |
-        - id: block_0
-          frame_id: world
-          position: [-5.0, -0.2, 1.62]
-          yaw_deg: 0.0
-          pose_status: POSE_PRECISE
-          task_status: TASK_FREE
-          confidence: 1.0
+        # - id: block_0
+        #   frame_id: world
+        #   position: [-5.0, -0.2, 1.62]
+        #   yaw_deg: 0.0
+        #   pose_status: POSE_PRECISE
+        #   task_status: TASK_FREE
+        #   confidence: 1.0
         - id: block_1
           frame_id: world
           position: [-3.5, -0.2, 1.62]
@@ -38,17 +38,17 @@ world_model_node:
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
-        - id: block_3
-          frame_id: world
-          position: [-5.0, 0.68, 1.62]
-          yaw_deg: 0.0
-          pose_status: POSE_PRECISE
-          task_status: TASK_FREE
-          confidence: 1.0
-        - id: block_4
-          frame_id: world
-          position: [-3.5, 0.68, 1.62]
-          yaw_deg: 0.0
-          pose_status: POSE_PRECISE
-          task_status: TASK_FREE
-          confidence: 1.0
+        # - id: block_3
+        #   frame_id: world
+        #   position: [-5.0, 0.68, 1.62]
+        #   yaw_deg: 0.0
+        #   pose_status: POSE_PRECISE
+        #   task_status: TASK_FREE
+        #   confidence: 1.0
+        # - id: block_4
+        #   frame_id: world
+        #   position: [-3.5, 0.68, 1.62]
+        #   yaw_deg: 0.0
+        #   pose_status: POSE_PRECISE
+        #   task_status: TASK_FREE
+        #   confidence: 1.0
