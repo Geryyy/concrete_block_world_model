@@ -524,8 +524,6 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     cfg.block_dimensions_m[idx] = block_dimensions[idx];
   }
 
-  // Keep for launch-file compatibility; no longer used in one-shot flow.
-  (void)node.declare_parameter<std::string>("calib_yaml", "");
   cfg.initial_blocks = parseInitialBlocksYaml(
     node.get_logger(), cfg.world_frame, cfg.initial_blocks_yaml);
   cfg.static_scene_objects = parseStaticSceneObjectsYaml(
