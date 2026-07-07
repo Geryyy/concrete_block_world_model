@@ -81,6 +81,11 @@ void processRegistrationCandidates(
   for (const auto & candidate : candidates) {
     concrete_block_world_model_interfaces::msg::Block block;
     std::string reason;
+    RCLCPP_INFO(
+      rt.logger,
+      "Registration candidate start: detection_id=%u timeout=%.2fs",
+      candidate.first,
+      request.registration_timeout_s);
     const bool ok = rt.run_registration(
       candidate.first,
       candidate.second,
@@ -98,14 +103,22 @@ void processRegistrationCandidates(
         ++counters.registrations_ok;
         RCLCPP_INFO(
           rt.logger,
-          "Registration accepted and associated: incoming=%s assigned=%s",
+          "Registration accepted and associated: detection_id=%u incoming=%s assigned=%s confidence=%.3f pose_status=%d pos=[%.3f, %.3f, %.3f]",
+          candidate.first,
           block.id.c_str(),
-          assigned_id.c_str());
+          assigned_id.c_str(),
+          block.confidence,
+          block.pose_status,
+          block.pose.position.x,
+          block.pose.position.y,
+          block.pose.position.z);
       } else {
         RCLCPP_WARN(
           rt.logger,
-          "Registration rejected after association checks for %s: %s",
+          "Registration rejected after association checks: detection_id=%u incoming=%s confidence=%.3f reason=%s",
+          candidate.first,
           block.id.c_str(),
+          block.confidence,
           upsert_reason.c_str());
       }
       continue;
@@ -123,7 +136,7 @@ void processRegistrationCandidates(
     if (!fallback_ok) {
       RCLCPP_WARN(
         rt.logger,
-        "Registration rejected for block_%u: %s",
+        "Registration rejected: detection_id=%u reason=%s",
         candidate.first,
         reason.c_str());
     }

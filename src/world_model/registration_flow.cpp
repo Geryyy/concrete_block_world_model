@@ -6,6 +6,7 @@
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
+#include "concrete_block_world_model/world_model/continuous_perception.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
 
 namespace cbp::world_model
@@ -14,7 +15,8 @@ namespace cbp::world_model
 std::vector<DetectionCandidate> buildRegistrationCandidates(
   const ros2_yolos_cpp::srv::SegmentImage::Response & seg_res,
   OneShotMode run_mode,
-  const std::string & target_block_id)
+  const std::string & target_block_id,
+  const rclcpp::Logger & logger)
 {
   std::vector<DetectionCandidate> candidates;
   candidates.reserve(seg_res.detections.detections.size());
@@ -25,17 +27,40 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
     const auto & det = detections[i];
     const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
     const std::string det_id = detectionBlockId(detection_id);
+    const double confidence = detectionConfidence(det);
+    const std::string class_id =
+      det.results.empty() ? std::string{} : det.results.front().hypothesis.class_id;
 
     if ((run_mode == OneShotMode::kRefineBlock || run_mode == OneShotMode::kRefineGrasped) &&
       !target_block_id.empty() &&
       isAutoAssignedBlockId(target_block_id) &&
       det_id != target_block_id)
     {
+      RCLCPP_INFO(
+        logger,
+        "One-shot candidate skipped: idx=%zu detection_id=%u class=%s confidence=%.3f reason=target_filter target=%s",
+        i,
+        detection_id,
+        class_id.empty() ? "<unknown>" : class_id.c_str(),
+        confidence,
+        target_block_id.c_str());
       continue;
     }
 
     cv::Mat det_mask = extract_mask_roi(full_mask, det);
-    if (det_mask.empty() || cv::countNonZero(det_mask) == 0) {
+    const int mask_pixels = det_mask.empty() ? 0 : cv::countNonZero(det_mask);
+    if (mask_pixels == 0) {
+      RCLCPP_WARN(
+        logger,
+        "One-shot candidate rejected: idx=%zu detection_id=%u class=%s confidence=%.3f bbox[cx=%.1f cy=%.1f w=%.1f h=%.1f] reason=empty_mask",
+        i,
+        detection_id,
+        class_id.empty() ? "<unknown>" : class_id.c_str(),
+        confidence,
+        det.bbox.center.position.x,
+        det.bbox.center.position.y,
+        det.bbox.size_x,
+        det.bbox.size_y);
       continue;
     }
 
@@ -44,6 +69,18 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
       "mono8",
       det_mask).toImageMsg();
     candidates.emplace_back(detection_id, *mask_msg);
+    RCLCPP_INFO(
+      logger,
+      "One-shot registration candidate accepted: idx=%zu detection_id=%u class=%s confidence=%.3f mask_pixels=%d bbox[cx=%.1f cy=%.1f w=%.1f h=%.1f]",
+      i,
+      detection_id,
+      class_id.empty() ? "<unknown>" : class_id.c_str(),
+      confidence,
+      mask_pixels,
+      det.bbox.center.position.x,
+      det.bbox.center.position.y,
+      det.bbox.size_x,
+      det.bbox.size_y);
   }
 
   return candidates;
@@ -81,4 +118,3 @@ bool selectBestCandidateByExpectedPose(
 }
 
 }  // namespace cbp::world_model
-

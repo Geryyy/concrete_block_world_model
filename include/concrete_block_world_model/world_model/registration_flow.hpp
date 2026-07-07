@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
@@ -19,7 +20,8 @@ using DetectionCandidate = std::pair<uint32_t, sensor_msgs::msg::Image>;
 std::vector<DetectionCandidate> buildRegistrationCandidates(
   const ros2_yolos_cpp::srv::SegmentImage::Response & seg_res,
   OneShotMode run_mode,
-  const std::string & target_block_id);
+  const std::string & target_block_id,
+  const rclcpp::Logger & logger);
 
 bool selectBestCandidateByExpectedPose(
   const std::vector<DetectionCandidate> & candidates,
@@ -32,4 +34,3 @@ bool selectBestCandidateByExpectedPose(
   double & out_best_dist);
 
 }  // namespace cbp::world_model
-

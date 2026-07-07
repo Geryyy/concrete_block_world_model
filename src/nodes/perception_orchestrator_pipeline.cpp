@@ -339,7 +339,7 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
     }
 
     auto candidates = cbpwm::buildRegistrationCandidates(
-      *seg_res, run_request.mode, run_request.target_block_id);
+      *seg_res, run_request.mode, run_request.target_block_id, get_logger());
 
     const size_t registration_candidates = candidates.size();
     RCLCPP_INFO(
