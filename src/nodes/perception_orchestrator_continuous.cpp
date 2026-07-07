@@ -776,8 +776,7 @@ bool PerceptionOrchestratorNode::applyFilteredContinuousObservation(
       }
 
       if (assigned_id.empty()) {
-        ++world_block_counter_;
-        assigned_id = "wm_block_" + std::to_string(world_block_counter_);
+        assigned_id = cbpwm::nextWorldBlockId(persistent_world_, world_block_counter_);
         auto track = cbpwm::initializeTrack(observation, now_s, continuous_cfg_.filtering);
         continuous_tracks_[assigned_id] = track;
         reason = "tentative track created";

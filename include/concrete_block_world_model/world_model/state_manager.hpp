@@ -28,6 +28,10 @@ std::string resolveGraspedBlockId(
   const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   const rclcpp::Clock & clock);
 
+std::string nextWorldBlockId(
+  const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
+  uint64_t & world_block_counter);
+
 bool upsertRegisteredBlock(
   std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
@@ -41,4 +45,3 @@ bool upsertRegisteredBlock(
   std::string & reason);
 
 }  // namespace cbp::world_model
-

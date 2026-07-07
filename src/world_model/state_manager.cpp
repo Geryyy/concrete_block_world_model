@@ -5,17 +5,6 @@
 namespace cbp::world_model
 {
 
-namespace
-{
-
-std::string nextWorldBlockId(uint64_t & world_block_counter)
-{
-  world_block_counter++;
-  return "wm_block_" + std::to_string(world_block_counter);
-}
-
-}  // namespace
-
 double blockDistance(
   const concrete_block_world_model_interfaces::msg::Block & a,
   const concrete_block_world_model_interfaces::msg::Block & b)
@@ -43,6 +32,18 @@ std::string resolveGraspedBlockId(
     }
   }
   return best_id;
+}
+
+std::string nextWorldBlockId(
+  const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
+  uint64_t & world_block_counter)
+{
+  std::string candidate;
+  do {
+    candidate = "block_" + std::to_string(world_block_counter);
+    ++world_block_counter;
+  } while (persistent_world.find(candidate) != persistent_world.end());
+  return candidate;
 }
 
 bool upsertRegisteredBlock(
@@ -101,7 +102,7 @@ bool upsertRegisteredBlock(
   } else if (best_match != nullptr) {
     assigned_id = best_id;
   } else {
-    assigned_id = nextWorldBlockId(world_block_counter);
+    assigned_id = nextWorldBlockId(persistent_world, world_block_counter);
   }
 
   auto it = persistent_world.find(assigned_id);
@@ -143,4 +144,3 @@ bool upsertRegisteredBlock(
 }
 
 }  // namespace cbp::world_model
-
