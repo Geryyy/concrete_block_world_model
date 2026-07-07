@@ -46,8 +46,8 @@ def generate_launch_description():
                     },
                 ],
                 remappings=[
-                    ("image", "/zed2i/warped/left/image_rect_color/image_raw"),
-                    ("points", "/seyond_points"),
+                    ("image", "/blackfly_rotated/image_rect"),
+                    ("points", "/seyond/points"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("block_goal_markers", "/cbp/block_goal_markers"),

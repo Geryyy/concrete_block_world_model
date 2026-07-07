@@ -472,7 +472,7 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.refine_grasped_camera_frame =
     node.declare_parameter<std::string>("refine_grasped.camera_frame", "");
   cfg.refine_grasped_camera_info_topic = node.declare_parameter<std::string>(
-    "refine_grasped.camera_info_topic", "/zed2i/warped/left/camera_info");
+    "refine_grasped.camera_info_topic", "/blackfly_rotated/camera_info");
   cfg.refine_grasped_min_depth_m =
     node.declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
   cfg.refine_grasped_max_depth_m =

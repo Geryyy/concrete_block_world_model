@@ -76,7 +76,7 @@ struct WorldModelConfig
   bool refine_grasped_use_fk_roi{true};
   std::string refine_grasped_tcp_frame{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame{};
-  std::string refine_grasped_camera_info_topic{"/zed2i/warped/left/camera_info"};
+  std::string refine_grasped_camera_info_topic{"/blackfly_rotated/camera_info"};
   double refine_grasped_min_depth_m{0.5};
   double refine_grasped_max_depth_m{30.0};
   double refine_grasped_segmentation_timeout_s{3.0};

@@ -438,7 +438,7 @@ private:
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame_{};
-  std::string refine_grasped_camera_info_topic_{"/zed2i/warped/left/camera_info"};
+  std::string refine_grasped_camera_info_topic_{"/blackfly_rotated/camera_info"};
   Eigen::Matrix4d T_tcp_block_{Eigen::Matrix4d::Identity()};
   // Per-block captured TCP->block grasp offsets, overriding the nominal
   // T_tcp_block_ for FK tracking while a block is TASK_MOVE. Set from the

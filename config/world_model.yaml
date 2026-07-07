@@ -222,7 +222,7 @@ world_model_node:
       # Optional override; if empty, use image.header.frame_id.
       camera_frame: ""
       # Camera intrinsics used to project FK ROI into image space.
-      camera_info_topic: "/zed2i/warped/left/camera_info"
+      camera_info_topic: "/blackfly_rotated/camera_info"
       # Transform from TCP frame -> predicted block center used for ROI placement.
       # Units: xyz in meters, rpy in radians.
       # Frame: values are expressed in tcp_frame axes.
