@@ -287,6 +287,22 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
       "One-shot %s: segmentation detections=%zu",
       cbpwm::oneShotModeToString(run_request.mode),
       seg_detection_count);
+    for (size_t i = 0; i < seg_detection_count; ++i) {
+      const auto & det = seg_res->detections.detections[i];
+      const std::string class_id =
+        det.results.empty() ? std::string{} : det.results.front().hypothesis.class_id;
+      RCLCPP_INFO(
+        get_logger(),
+        "One-shot %s detection: idx=%zu class=%s confidence=%.3f bbox[cx=%.1f cy=%.1f w=%.1f h=%.1f]",
+        cbpwm::oneShotModeToString(run_request.mode),
+        i,
+        class_id.empty() ? "<unknown>" : class_id.c_str(),
+        cbpwm::detectionConfidence(det),
+        det.bbox.center.position.x,
+        det.bbox.center.position.y,
+        det.bbox.size_x,
+        det.bbox.size_y);
+    }
 
     if (debug_detection_overlay_enabled_.load() && det_debug_pub_) {
       publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
