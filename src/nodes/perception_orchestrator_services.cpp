@@ -398,3 +398,31 @@ void PerceptionOrchestratorNode::handleClearBlockGoals(
       cleared_count,
       clear_all ? "<all>" : "<selected>");
   }
+
+void PerceptionOrchestratorNode::handleClearWorldModel(
+    const std::shared_ptr<ClearWorldModelSrv::Request> request,
+    std::shared_ptr<ClearWorldModelSrv::Response> response)
+  {
+    (void)request;
+
+    uint32_t cleared_count = 0;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      cleared_count = static_cast<uint32_t>(persistent_world_.size());
+      persistent_world_.clear();
+      continuous_tracks_.clear();
+      seeded_block_ids_.clear();
+      task_move_grasp_offsets_.clear();
+      world_block_counter_ = 0;
+    }
+
+    std_msgs::msg::Header header;
+    header.stamp = now();
+    header.frame_id = world_frame_;
+    publishPersistentWorld(header);
+
+    response->success = true;
+    response->cleared_count = cleared_count;
+    response->message = "Cleared world model.";
+    RCLCPP_INFO(get_logger(), "ClearWorldModel: cleared=%u", cleared_count);
+  }

@@ -294,6 +294,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         std::placeholders::_1,
         std::placeholders::_2));
 
+    clear_world_model_srv_ = create_service<ClearWorldModelSrv>(
+      "~/clear_world_model",
+      std::bind(
+        &PerceptionOrchestratorNode::handleClearWorldModel,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+
     marker_refresh_timer_ = create_wall_timer(
       std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {
