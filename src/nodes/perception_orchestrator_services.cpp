@@ -178,17 +178,40 @@ void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
       // Keep block alive and reflect semantic state change immediately.
       it->second.last_seen = publish_header.stamp;
 
-      // Track the captured grasp offset for FK pose tracking while carrying;
-      // clear it once the block is no longer being moved.
-      if (target_task_status == Block::TASK_MOVE && request->has_grasp_offset) {
-        const auto & p = request->grasp_offset.position;
-        const auto & o = request->grasp_offset.orientation;
-        Eigen::Matrix4d m = Eigen::Matrix4d::Identity();
-        m.block<3, 3>(0, 0) =
-          Eigen::Quaterniond(o.w, o.x, o.y, o.z).normalized().toRotationMatrix();
-        m.block<3, 1>(0, 3) = Eigen::Vector3d(p.x, p.y, p.z);
-        task_move_grasp_offsets_[block_id] = m;
-      } else if (target_task_status != Block::TASK_MOVE) {
+      // Capture the grasp offset T_tcp_block for FK pose tracking while carrying.
+      // Priority: explicit request offset > auto-capture from the block's registered
+      // pose + current TCP > nominal fallback. Cleared when leaving TASK_MOVE.
+      if (target_task_status == Block::TASK_MOVE) {
+        Eigen::Matrix4d offset = Eigen::Matrix4d::Identity();
+        const char * offset_src = "nominal_fallback";
+        std::string capture_reason;
+        if (request->has_grasp_offset) {
+          const auto & p = request->grasp_offset.position;
+          const auto & o = request->grasp_offset.orientation;
+          offset.block<3, 3>(0, 0) =
+            Eigen::Quaterniond(o.w, o.x, o.y, o.z).normalized().toRotationMatrix();
+          offset.block<3, 1>(0, 3) = Eigen::Vector3d(p.x, p.y, p.z);
+          offset_src = "request";
+        } else if (captureGraspOffsetFromPose(it->second.pose, offset, capture_reason)) {
+          offset_src = "auto_capture";
+        } else {
+          offset = T_tcp_block_;
+          RCLCPP_WARN(
+            get_logger(),
+            "Grasp offset auto-capture failed for '%s' (%s); using nominal T_tcp_block_.",
+            block_id.c_str(),
+            capture_reason.c_str());
+        }
+        task_move_grasp_offsets_[block_id] = offset;
+        RCLCPP_INFO(
+          get_logger(),
+          "Grasp offset for '%s' set from %s: t=[%.3f %.3f %.3f]",
+          block_id.c_str(),
+          offset_src,
+          offset(0, 3),
+          offset(1, 3),
+          offset(2, 3));
+      } else {
         task_move_grasp_offsets_.erase(block_id);
       }
     }

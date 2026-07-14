@@ -41,6 +41,7 @@ void PerceptionOrchestratorNode::cameraInfoCallback(const sensor_msgs::msg::Came
   }
 
 bool PerceptionOrchestratorNode::lookupPredictedGraspedPose(
+    const std::string & block_id,
     const std_msgs::msg::Header & header,
     Eigen::Vector3d & p_world,
     Eigen::Vector3d & p_camera,
@@ -79,7 +80,10 @@ bool PerceptionOrchestratorNode::lookupPredictedGraspedPose(
 
       const Eigen::Matrix4d T_world_tcp = transformToEigen(tf_world_tcp);
       const Eigen::Matrix4d T_camera_world = transformToEigen(tf_camera_world);
-      const Eigen::Matrix4d T_world_block_pred = T_world_tcp * T_tcp_block_;
+      // Prefer the per-block captured grasp offset (populated on TASK_MOVE); fall back to
+      // the nominal T_tcp_block_ when none is available, so refine_grasped and FK tracking
+      // share the same offset and their predicted poses agree.
+      const Eigen::Matrix4d T_world_block_pred = T_world_tcp * resolveGraspOffset(block_id);
       p_world = T_world_block_pred.block<3, 1>(0, 3);
       q_world = Eigen::Quaterniond(T_world_block_pred.block<3, 3>(0, 0)).normalized();
       const Eigen::Vector4d p_block_world_h(
@@ -119,6 +123,55 @@ bool PerceptionOrchestratorNode::lookupTcpInWorld(
       reason = std::string("TF lookup failed: ") + ex.what();
       return false;
     }
+  }
+
+bool PerceptionOrchestratorNode::captureGraspOffsetFromPose(
+    const geometry_msgs::msg::Pose & block_pose,
+    Eigen::Matrix4d & out_offset,
+    std::string & reason)
+  {
+    // Latest TCP pose (zero stamp => tf2 returns the most recent available transform,
+    // which is the TCP at the moment of grasping).
+    std_msgs::msg::Header tcp_header;
+    Eigen::Matrix4d T_world_tcp = Eigen::Matrix4d::Identity();
+    if (!lookupTcpInWorld(tcp_header, T_world_tcp, reason)) {
+      return false;
+    }
+
+    Eigen::Matrix4d T_world_block = Eigen::Matrix4d::Identity();
+    T_world_block.block<3, 3>(0, 0) =
+      Eigen::Quaterniond(
+      block_pose.orientation.w, block_pose.orientation.x,
+      block_pose.orientation.y, block_pose.orientation.z).normalized().toRotationMatrix();
+    T_world_block.block<3, 1>(0, 3) =
+      Eigen::Vector3d(block_pose.position.x, block_pose.position.y, block_pose.position.z);
+
+    const Eigen::Matrix4d T_tcp_block = T_world_tcp.inverse() * T_world_block;
+
+    // Plausibility gate: reject captures that stray too far from a configured nominal.
+    if (grasp_offset_nominal_configured_) {
+      const double dev =
+        (T_tcp_block.block<3, 1>(0, 3) - T_tcp_block_.block<3, 1>(0, 3)).norm();
+      if (dev > refine_grasped_grasp_offset_max_deviation_m_) {
+        reason = "captured grasp offset deviates " + std::to_string(dev) +
+          " m from nominal (max " +
+          std::to_string(refine_grasped_grasp_offset_max_deviation_m_) + " m)";
+        return false;
+      }
+    }
+
+    out_offset = T_tcp_block;
+    return true;
+  }
+
+Eigen::Matrix4d PerceptionOrchestratorNode::resolveGraspOffset(const std::string & block_id)
+  {
+    std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+    const auto it = task_move_grasp_offsets_.find(block_id);
+    if (it != task_move_grasp_offsets_.end()) {
+      return it->second;
+    }
+    return T_tcp_block_;
   }
 
 bool PerceptionOrchestratorNode::resolveCameraFrame(
@@ -224,12 +277,13 @@ cbpwm::RefineFlowRuntime PerceptionOrchestratorNode::makeRefineFlowRuntime()
       };
     rt.lookup_predicted_grasped_pose =
       [this](
+      const std::string & block_id,
       const std_msgs::msg::Header & header,
       Eigen::Vector3d & p_world,
       Eigen::Vector3d & p_camera,
       Eigen::Quaterniond & q_world,
       std::string & reason) {
-        return lookupPredictedGraspedPose(header, p_world, p_camera, q_world, reason);
+        return lookupPredictedGraspedPose(block_id, header, p_world, p_camera, q_world, reason);
       };
     rt.world_point_to_camera =
       [this](

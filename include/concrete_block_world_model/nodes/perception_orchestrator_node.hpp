@@ -176,6 +176,7 @@ private:
   static Eigen::Matrix4d transformToEigen(const geometry_msgs::msg::TransformStamped & tf);
   void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
   bool lookupPredictedGraspedPose(
+    const std::string & block_id,
     const std_msgs::msg::Header & header,
     Eigen::Vector3d & p_world,
     Eigen::Vector3d & p_camera,
@@ -185,6 +186,15 @@ private:
     const std_msgs::msg::Header & header,
     Eigen::Matrix4d & T_world_tcp,
     std::string & reason);
+  // Capture the grasp offset T_tcp_block from a block's registered world pose and the
+  // latest TCP pose (T_world_tcp^-1 * T_world_block). When a real nominal T_tcp_block_ is
+  // configured, rejects captures that deviate from it by more than the configured max.
+  bool captureGraspOffsetFromPose(
+    const geometry_msgs::msg::Pose & block_pose,
+    Eigen::Matrix4d & out_offset,
+    std::string & reason);
+  // Per-block captured offset if present, else the nominal T_tcp_block_. Locks the world.
+  Eigen::Matrix4d resolveGraspOffset(const std::string & block_id);
   bool resolveCameraFrame(
     const std_msgs::msg::Header & header,
     std::string & camera_frame,
@@ -338,10 +348,20 @@ private:
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
   std::string refine_grasped_camera_frame_{};
   std::string refine_grasped_camera_info_topic_{"/blackfly_rotated/camera_info"};
+  // Nominal TCP->block offset from config (refine_grasped.tcp_to_block). Repurposed as a
+  // fallback when no registered pose is available to auto-capture from, and as a
+  // plausibility bound on auto-captured offsets. Identity when left unset.
   Eigen::Matrix4d T_tcp_block_{Eigen::Matrix4d::Identity()};
+  // True when T_tcp_block_ was configured to something other than identity, enabling the
+  // deviation gate on auto-captured offsets.
+  bool grasp_offset_nominal_configured_{false};
+  // Max translation deviation (m) an auto-captured offset may have from the nominal before
+  // it is rejected (only enforced when grasp_offset_nominal_configured_).
+  double refine_grasped_grasp_offset_max_deviation_m_{1.0};
   // Per-block captured TCP->block grasp offsets, overriding the nominal
-  // T_tcp_block_ for FK tracking while a block is TASK_MOVE. Set from the
-  // SetBlockTaskStatus grasp_offset; guarded by persistent_world_mutex_.
+  // T_tcp_block_ for FK tracking while a block is TASK_MOVE. Auto-captured on the
+  // transition to TASK_MOVE (or from an explicit SetBlockTaskStatus grasp_offset);
+  // guarded by persistent_world_mutex_.
   std::unordered_map<std::string, Eigen::Matrix4d> task_move_grasp_offsets_;
   cbpwm::RoiInputConfig refine_grasped_roi_cfg_;
   bool refine_block_use_pose_roi_{false};

@@ -391,6 +391,8 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
   cfg.refine_grasped_tcp_to_block_rpy =
     node.declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
+  cfg.refine_grasped_grasp_offset_max_deviation_m = node.declare_parameter<double>(
+    "refine_grasped.grasp_offset_capture.max_deviation_m", 1.0);
   cfg.refine_grasped_roi_size_m =
     node.declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
 

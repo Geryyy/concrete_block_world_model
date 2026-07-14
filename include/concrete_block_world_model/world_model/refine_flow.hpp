@@ -69,6 +69,7 @@ struct RefineFlowRuntime
   std::function<bool(ProjectionIntrinsics &)> get_projection_intrinsics;
 
   std::function<bool(
+      const std::string &,
       const std_msgs::msg::Header &,
       Eigen::Vector3d &,
       Eigen::Vector3d &,

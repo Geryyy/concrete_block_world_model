@@ -148,6 +148,12 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     T_tcp_block_ = Eigen::Matrix4d::Identity();
     T_tcp_block_.block<3, 3>(0, 0) = rot_tcp_block;
     T_tcp_block_.block<3, 1>(0, 3) = Eigen::Vector3d(tx, ty, tz);
+    // A configured (non-identity) nominal enables the deviation gate on auto-captured
+    // offsets; left at identity it only serves as a last-resort fallback.
+    grasp_offset_nominal_configured_ =
+      !T_tcp_block_.isApprox(Eigen::Matrix4d::Identity(), 1e-6);
+    refine_grasped_grasp_offset_max_deviation_m_ =
+      startup.refine_grasped_grasp_offset_max_deviation_m;
 
     refine_grasped_roi_cfg_.roi_size_x_m = cbpwm::vectorComponent(
       get_logger(), startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");

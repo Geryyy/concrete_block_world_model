@@ -146,11 +146,19 @@ world_model_node:
       # "Move down from current TCP":
       #   if TCP +Z points up  -> use negative z (e.g. [0, 0, -0.10])
       #   if TCP +Z points down -> use positive z (e.g. [0, 0,  0.10])
+      # Nominal TCP->block offset. On TASK_MOVE the real offset is auto-captured from the
+      # block's registered pose and the current TCP (T_world_tcp^-1 * T_world_block); this
+      # nominal is only the fallback when no registered pose exists, and (when non-identity)
+      # a plausibility bound on the auto-capture.
       tcp_to_block:
         # Translation from TCP to block center.
         xyz: [0.0, 0.0, 0.9]
         # Rotation from TCP to block frame as roll, pitch, yaw.
         rpy: [0.0, 0.0, 0.0]
+      grasp_offset_capture:
+        # Reject an auto-captured offset whose translation deviates from the nominal
+        # tcp_to_block by more than this (m). Only enforced when tcp_to_block is non-identity.
+        max_deviation_m: 1.0
       # ROI size around predicted block center in meters: [x_width, y_height].
       # Converted internally to pixels using camera intrinsics + predicted depth.
       roi_size_m: [1.80, 1.5]

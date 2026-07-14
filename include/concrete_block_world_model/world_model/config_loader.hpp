@@ -68,6 +68,7 @@ struct WorldModelConfig
   int refine_grasped_blur_kernel_size{31};
   std::vector<double> refine_grasped_tcp_to_block_xyz{0.0, 0.0, 0.0};
   std::vector<double> refine_grasped_tcp_to_block_rpy{0.0, 0.0, 0.0};
+  double refine_grasped_grasp_offset_max_deviation_m{1.0};
   std::vector<double> refine_grasped_roi_size_m{0.60, 0.40};
   PoseFusionConfig refine_grasped_pose_fusion;
 

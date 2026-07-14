@@ -51,7 +51,8 @@ void processRefineGraspedWithFkRoi(
   Eigen::Quaterniond q_world_fk = Eigen::Quaterniond::Identity();
   std::string reason;
   if (!rt.lookup_predicted_grasped_pose ||
-    !rt.lookup_predicted_grasped_pose(image->header, p_world_fk, p_camera, q_world_fk, reason))
+    !rt.lookup_predicted_grasped_pose(
+      request.target_block_id, image->header, p_world_fk, p_camera, q_world_fk, reason))
   {
     RCLCPP_WARN(rt.logger, "REFINE_GRASPED FK+ROI failed: %s", reason.c_str());
     rt.publish_persistent_world(cloud->header);
