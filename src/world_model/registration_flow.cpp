@@ -18,6 +18,12 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
   const std::string & target_block_id,
   const rclcpp::Logger & logger)
 {
+  // Targeted refine is resolved by pose in processRegistrationCandidates(), not by
+  // matching a per-frame detection index to a persistent world-model id here, so
+  // these are unused when building the candidate list.
+  (void)run_mode;
+  (void)target_block_id;
+
   std::vector<DetectionCandidate> candidates;
   candidates.reserve(seg_res.detections.detections.size());
 
@@ -26,26 +32,9 @@ std::vector<DetectionCandidate> buildRegistrationCandidates(
   for (size_t i = 0; i < detections.size(); ++i) {
     const auto & det = detections[i];
     const uint32_t detection_id = static_cast<uint32_t>(i + 1U);
-    const std::string det_id = detectionBlockId(detection_id);
     const double confidence = detectionConfidence(det);
     const std::string class_id =
       det.results.empty() ? std::string{} : det.results.front().hypothesis.class_id;
-
-    if ((run_mode == OneShotMode::kRefineBlock || run_mode == OneShotMode::kRefineGrasped) &&
-      !target_block_id.empty() &&
-      isAutoAssignedBlockId(target_block_id) &&
-      det_id != target_block_id)
-    {
-      RCLCPP_INFO(
-        logger,
-        "One-shot candidate skipped: idx=%zu detection_id=%u class=%s confidence=%.3f reason=target_filter target=%s",
-        i,
-        detection_id,
-        class_id.empty() ? "<unknown>" : class_id.c_str(),
-        confidence,
-        target_block_id.c_str());
-      continue;
-    }
 
     cv::Mat det_mask = extract_mask_roi(full_mask, det);
     const int mask_pixels = det_mask.empty() ? 0 : cv::countNonZero(det_mask);

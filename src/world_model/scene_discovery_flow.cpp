@@ -14,17 +14,26 @@ void processRegistrationCandidates(
   const SceneFlowRuntime & rt,
   RegistrationCounters & counters)
 {
+  // Any refine with a named target (whether the id is auto-assigned like "block_0"
+  // or user-named) is matched to a detection by pose, using the target block's
+  // known world pose. Detection ids are per-frame indices and cannot be matched to
+  // persistent world-model ids directly.
   const bool targeted_refine =
     (request.mode == OneShotMode::kRefineBlock || request.mode == OneShotMode::kRefineGrasped) &&
-    !request.target_block_id.empty() &&
-    !isAutoAssignedBlockId(request.target_block_id);
+    !request.target_block_id.empty();
 
-  concrete_block_world_model_interfaces::msg::Block expected_target;
-  const bool have_expected_target =
-    targeted_refine && rt.get_expected_target &&
-    rt.get_expected_target(request.target_block_id, expected_target);
+  if (targeted_refine) {
+    concrete_block_world_model_interfaces::msg::Block expected_target;
+    if (!rt.get_expected_target ||
+      !rt.get_expected_target(request.target_block_id, expected_target))
+    {
+      RCLCPP_WARN(
+        rt.logger,
+        "Targeted refine skipped: target '%s' is not present in the world model.",
+        request.target_block_id.c_str());
+      return;
+    }
 
-  if (have_expected_target) {
     concrete_block_world_model_interfaces::msg::Block best_block;
     double best_dist = std::numeric_limits<double>::infinity();
     const bool best_found = selectBestCandidateByExpectedPose(
