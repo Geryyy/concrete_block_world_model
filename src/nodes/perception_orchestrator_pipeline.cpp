@@ -275,16 +275,38 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
         det.bbox.size_y);
     }
 
+    // Collapse strongly-overlapping detections (e.g. a nested duplicate box on the same
+    // block) into one, taking the union bbox so the cutout keeps every face. Done before
+    // the overlay so the debug image shows the merged result the registration will use.
+    if (scene_discovery_merge_enabled_) {
+      const size_t before = seg_res->detections.detections.size();
+      seg_res->detections = cbpwm::mergeOverlappingDetections(
+        seg_res->detections,
+        scene_discovery_merge_containment_ratio_,
+        scene_discovery_merge_iou_threshold_);
+      const size_t after = seg_res->detections.detections.size();
+      if (after != before) {
+        RCLCPP_INFO(
+          get_logger(),
+          "One-shot %s: overlap-merged detections %zu -> %zu (containment>=%.2f or IoU>=%.2f)",
+          cbpwm::oneShotModeToString(run_request.mode),
+          before,
+          after,
+          scene_discovery_merge_containment_ratio_,
+          scene_discovery_merge_iou_threshold_);
+      }
+    }
+
     if (debug_detection_overlay_enabled_.load() && det_debug_pub_) {
       publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
     }
     publishYoloServiceDebugImage(seg_res->debug_image);
 
     const auto t_after_track = t_after_seg;
-    const size_t tracked_count = seg_detection_count;
+    const size_t tracked_count = seg_res->detections.detections.size();
     RCLCPP_INFO(
       get_logger(),
-      "One-shot %s: detections=%zu tracked=%zu (tracker bypassed)",
+      "One-shot %s: detections=%zu tracked=%zu (overlap-merged)",
       cbpwm::oneShotModeToString(run_request.mode),
       seg_detection_count,
       tracked_count);

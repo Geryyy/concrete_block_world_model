@@ -57,6 +57,18 @@ world_model_node:
         #   position: [0.000000, 0.000000, 1.212500]
         #   dimensions: [0.450000, 0.650000, 1.512500]
 
+      # ---- Overlap-merge of duplicate detections (one-shot scene discovery) ----
+      # Collapses strongly-overlapping detection boxes on the same block into a
+      # single detection with the union bounding box, so the registration cutout
+      # keeps every face (a nested duplicate box would clip the front face away).
+      scene_discovery_merge:
+        # Merge overlapping detections before building registration candidates.
+        enable: true
+        # Merge if intersection / smaller-box-area >= this (catches nested boxes).
+        containment_ratio: 0.3
+        # ...or if IoU >= this (catches partially-overlapping duplicates).
+        iou_threshold: 0.5
+
       # ---- Advanced / experimental scene-discovery fallback ----
       # Kept visible for ablation; normal operation should rely on registered
       # detections instead of inserting coarse fallback poses.

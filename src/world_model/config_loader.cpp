@@ -334,6 +334,12 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     true);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
+  cfg.scene_discovery_merge_enabled =
+    node.declare_parameter<bool>("world_model.scene_discovery_merge.enable", true);
+  cfg.scene_discovery_merge_containment_ratio = node.declare_parameter<double>(
+    "world_model.scene_discovery_merge.containment_ratio", 0.3);
+  cfg.scene_discovery_merge_iou_threshold = node.declare_parameter<double>(
+    "world_model.scene_discovery_merge.iou_threshold", 0.5);
   cfg.scene_discovery_coarse_fallback_enabled =
     node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
   cfg.scene_discovery_coarse_fallback_min_points =

@@ -1,7 +1,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <geometry_msgs/msg/point.hpp>
 
@@ -25,6 +28,44 @@ builtin_interfaces::msg::Duration markerLifetime(double seconds)
   return lifetime;
 }
 
+// Axis-aligned box in image pixels, used for detection overlap tests.
+struct DetAabb
+{
+  double x0, y0, x1, y1;
+};
+
+DetAabb detAabb(const vision_msgs::msg::Detection2D & det)
+{
+  const double hw = det.bbox.size_x * 0.5;
+  const double hh = det.bbox.size_y * 0.5;
+  const double cx = det.bbox.center.position.x;
+  const double cy = det.bbox.center.position.y;
+  return DetAabb{cx - hw, cy - hh, cx + hw, cy + hh};
+}
+
+double aabbArea(const DetAabb & b)
+{
+  return std::max(0.0, b.x1 - b.x0) * std::max(0.0, b.y1 - b.y0);
+}
+
+double aabbIntersection(const DetAabb & a, const DetAabb & b)
+{
+  const double x0 = std::max(a.x0, b.x0);
+  const double y0 = std::max(a.y0, b.y0);
+  const double x1 = std::min(a.x1, b.x1);
+  const double y1 = std::min(a.y1, b.y1);
+  return std::max(0.0, x1 - x0) * std::max(0.0, y1 - y0);
+}
+
+int dsuFind(std::vector<int> & parent, int i)
+{
+  while (parent[i] != i) {
+    parent[i] = parent[parent[i]];  // path halving
+    i = parent[i];
+  }
+  return i;
+}
+
 }  // namespace
 
 double detectionConfidence(const vision_msgs::msg::Detection2D & det)
@@ -33,6 +74,102 @@ double detectionConfidence(const vision_msgs::msg::Detection2D & det)
     return 1.0;
   }
   return det.results.front().hypothesis.score;
+}
+
+vision_msgs::msg::Detection2DArray mergeOverlappingDetections(
+  const vision_msgs::msg::Detection2DArray & detections,
+  double containment_ratio,
+  double iou_threshold)
+{
+  const auto & dets = detections.detections;
+  const std::size_t n = dets.size();
+
+  vision_msgs::msg::Detection2DArray out;
+  out.header = detections.header;
+  if (n <= 1) {
+    out.detections = dets;
+    return out;
+  }
+
+  std::vector<DetAabb> boxes(n);
+  std::vector<double> areas(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    boxes[i] = detAabb(dets[i]);
+    areas[i] = aabbArea(boxes[i]);
+  }
+
+  // Union-find grouping of strongly-overlapping detections (transitive).
+  std::vector<int> parent(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    parent[i] = static_cast<int>(i);
+  }
+
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double inter = aabbIntersection(boxes[i], boxes[j]);
+      if (inter <= 0.0) {
+        continue;
+      }
+      const double min_area = std::min(areas[i], areas[j]);
+      const double containment = (min_area > 0.0) ? inter / min_area : 0.0;
+      const double union_area = areas[i] + areas[j] - inter;
+      const double iou = (union_area > 0.0) ? inter / union_area : 0.0;
+      if (containment >= containment_ratio || iou >= iou_threshold) {
+        parent[dsuFind(parent, static_cast<int>(i))] =
+          dsuFind(parent, static_cast<int>(j));
+      }
+    }
+  }
+
+  // Collect members per group, preserving first-seen order for deterministic output.
+  std::vector<int> group_order;
+  group_order.reserve(n);
+  std::unordered_map<int, std::vector<std::size_t>> groups;
+  for (std::size_t i = 0; i < n; ++i) {
+    const int root = dsuFind(parent, static_cast<int>(i));
+    auto it = groups.find(root);
+    if (it == groups.end()) {
+      group_order.push_back(root);
+      groups.emplace(root, std::vector<std::size_t>{i});
+    } else {
+      it->second.push_back(i);
+    }
+  }
+
+  out.detections.reserve(group_order.size());
+  for (const int root : group_order) {
+    const auto & members = groups[root];
+    if (members.size() == 1) {
+      out.detections.push_back(dets[members.front()]);
+      continue;
+    }
+
+    // Union box + highest-confidence member drives class/hypothesis/header.
+    DetAabb u = boxes[members.front()];
+    std::size_t best = members.front();
+    double best_conf = detectionConfidence(dets[best]);
+    for (std::size_t k = 1; k < members.size(); ++k) {
+      const std::size_t m = members[k];
+      u.x0 = std::min(u.x0, boxes[m].x0);
+      u.y0 = std::min(u.y0, boxes[m].y0);
+      u.x1 = std::max(u.x1, boxes[m].x1);
+      u.y1 = std::max(u.y1, boxes[m].y1);
+      const double conf = detectionConfidence(dets[m]);
+      if (conf > best_conf) {
+        best_conf = conf;
+        best = m;
+      }
+    }
+
+    vision_msgs::msg::Detection2D merged = dets[best];
+    merged.bbox.center.position.x = 0.5 * (u.x0 + u.x1);
+    merged.bbox.center.position.y = 0.5 * (u.y0 + u.y1);
+    merged.bbox.size_x = u.x1 - u.x0;
+    merged.bbox.size_y = u.y1 - u.y0;
+    out.detections.push_back(std::move(merged));
+  }
+
+  return out;
 }
 
 std::string normalizeMode(std::string mode)

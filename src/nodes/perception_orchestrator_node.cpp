@@ -23,6 +23,9 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     runtime_cfg_.association_max_age_s = startup.association_max_age_s;
     runtime_cfg_.min_update_confidence = startup.min_update_confidence;
     runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
+    scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
+    scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;
+    scene_discovery_merge_iou_threshold_ = startup.scene_discovery_merge_iou_threshold;
     scene_discovery_coarse_fallback_enabled_ = startup.scene_discovery_coarse_fallback_enabled;
     scene_discovery_coarse_fallback_min_points_ = startup.scene_discovery_coarse_fallback_min_points;
     coarse_surface_square_ratio_thresh_ = startup.coarse_surface_square_ratio_thresh;

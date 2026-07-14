@@ -43,6 +43,9 @@ struct WorldModelConfig
   double min_update_confidence{0.25};
   bool task_move_fk_tracking_enabled{true};
   double refine_target_max_distance_m{1.2};
+  bool scene_discovery_merge_enabled{true};
+  double scene_discovery_merge_containment_ratio{0.3};
+  double scene_discovery_merge_iou_threshold{0.5};
   bool scene_discovery_coarse_fallback_enabled{true};
   int scene_discovery_coarse_fallback_min_points{120};
   double coarse_surface_square_ratio_thresh{1.35};

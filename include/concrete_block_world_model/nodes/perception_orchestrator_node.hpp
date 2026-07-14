@@ -346,6 +346,9 @@ private:
   cbpwm::RoiInputConfig refine_grasped_roi_cfg_;
   bool refine_block_use_pose_roi_{false};
   cbpwm::RoiInputConfig refine_block_roi_cfg_;
+  bool scene_discovery_merge_enabled_{true};
+  double scene_discovery_merge_containment_ratio_{0.3};
+  double scene_discovery_merge_iou_threshold_{0.5};
   bool scene_discovery_coarse_fallback_enabled_{true};
   int scene_discovery_coarse_fallback_min_points_{120};
   double coarse_surface_square_ratio_thresh_{1.35};
