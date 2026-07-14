@@ -198,7 +198,7 @@ world_model_node:
     # ----------------------------------
     refine_block:
       # Use existing world pose to crop REFINE_BLOCK segmentation.
-      use_pose_roi: false
+      use_pose_roi: true
       # ROI size around the target block pose.
       roi_size_m: [1.20, 1.00]
       # Minimum target depth for pose-based ROI projection.
