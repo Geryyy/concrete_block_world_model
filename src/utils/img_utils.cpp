@@ -1,6 +1,9 @@
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include <cv_bridge/cv_bridge.h>
 
+#include <algorithm>
+#include <cstdio>
+
 cv::Mat extract_mask_roi(
   const cv::Mat & full_mask,
   const vision_msgs::msg::Detection2D & det)
@@ -164,7 +167,44 @@ void drawDetectionBoxes(
   const vision_msgs::msg::Detection2DArray & detections,
   const cv::Scalar & color)
 {
+  constexpr double kFontScale = 0.5;
+  constexpr int kFontThickness = 1;
+  const int font = cv::FONT_HERSHEY_SIMPLEX;
+
   for (const auto & d : detections.detections) {
     drawBoundingBox(image, d.bbox, color);
+
+    // Top hypothesis score, or 1.0 when no hypothesis is attached.
+    const double confidence =
+      d.results.empty() ? 1.0 : d.results.front().hypothesis.score;
+    char label[16];
+    std::snprintf(label, sizeof(label), "%.2f", confidence);
+
+    const int box_x = static_cast<int>(d.bbox.center.position.x - d.bbox.size_x / 2);
+    const int box_y = static_cast<int>(d.bbox.center.position.y - d.bbox.size_y / 2);
+
+    int baseline = 0;
+    const cv::Size text_size =
+      cv::getTextSize(label, font, kFontScale, kFontThickness, &baseline);
+    // Place the label just above the box; drop it inside the top edge if there
+    // is no room above.
+    const int text_x = std::max(0, box_x);
+    const int text_top = (box_y - text_size.height - baseline >= 0) ?
+      (box_y - text_size.height - baseline) : box_y;
+
+    cv::rectangle(
+      image,
+      cv::Rect(text_x, text_top, text_size.width, text_size.height + baseline),
+      color,
+      cv::FILLED);
+    cv::putText(
+      image,
+      label,
+      cv::Point(text_x, text_top + text_size.height),
+      font,
+      kFontScale,
+      cv::Scalar(0, 0, 0),
+      kFontThickness,
+      cv::LINE_AA);
   }
 }
