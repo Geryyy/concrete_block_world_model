@@ -65,6 +65,13 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
   out.header = header;
 
   const rclcpp::Time now_stamp(header.stamp);
+  // The staleness timeout only makes sense in continuous mode, where every frame
+  // re-observes visible blocks and refreshes last_seen. In single-shot mode nothing
+  // re-observes a discovered block, so evicting on the timeout would delete exactly
+  // the blocks the caller wants to keep. Single-shot blocks persist until explicitly
+  // cleared (clear_world_model / clear_block_goals) or overwritten.
+  const bool timeout_eviction_enabled =
+    perception_mode_.load() == PerceptionMode::kContinuous;
   {
     std::lock_guard<std::mutex> lock(persistent_world_mutex_);
     for (auto it = persistent_world_.begin(); it != persistent_world_.end(); ) {
@@ -80,7 +87,9 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
         ++it;
         continue;
       }
-      if ((now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s) {
+      if (timeout_eviction_enabled &&
+        (now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s)
+      {
         continuous_tracks_.erase(it->first);
         it = persistent_world_.erase(it);
         continue;
