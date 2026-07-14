@@ -27,6 +27,14 @@ builtin_interfaces::msg::Duration markerLifetime(double seconds)
 
 }  // namespace
 
+double detectionConfidence(const vision_msgs::msg::Detection2D & det)
+{
+  if (det.results.empty()) {
+    return 1.0;
+  }
+  return det.results.front().hypothesis.score;
+}
+
 std::string normalizeMode(std::string mode)
 {
   std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) {

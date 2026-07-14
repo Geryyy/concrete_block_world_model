@@ -6,7 +6,7 @@
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
-#include "concrete_block_world_model/world_model/continuous_perception.hpp"
+#include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
 
 namespace cbp::world_model

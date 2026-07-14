@@ -6,7 +6,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "concrete_block_world_model/world_model/block_filter.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 
 namespace cbp::world_model
@@ -39,29 +38,11 @@ struct WorldModelConfig
   std::string object_class{"concrete_block"};
   std::string world_frame{"world"};
   double max_sync_delta_s{0.06};
-  double object_timeout_s{10.0};
   double association_max_distance_m{0.45};
   double association_max_age_s{20.0};
   double min_update_confidence{0.25};
-  bool protect_task_blocks_from_timeout{true};
   bool task_move_fk_tracking_enabled{true};
   double refine_target_max_distance_m{1.2};
-  std::string perception_mode{"IDLE"};
-  int continuous_process_every_n_frames{3};
-  double continuous_segmentation_timeout_s{1.0};
-  double continuous_cutout_timeout_s{1.0};
-  int continuous_min_mask_pixels{2000};
-  double continuous_min_mask_fill_ratio{0.15};
-  int continuous_min_valid_cloud_points{120};
-  ContinuousMaskMergeConfig continuous_mask_merge;
-  bool continuous_registration_enabled{false};
-  bool continuous_require_registration{false};
-  double continuous_registration_timeout_s{3.0};
-  int continuous_registration_max_per_frame{1};
-  double continuous_association_max_distance_m{0.8};
-  double continuous_association_max_age_s{20.0};
-  bool continuous_filtering_enabled{false};
-  BlockFilterConfig continuous_filtering;
   bool scene_discovery_coarse_fallback_enabled{true};
   int scene_discovery_coarse_fallback_min_points{120};
   double coarse_surface_square_ratio_thresh{1.35};

@@ -3,7 +3,6 @@
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
-#include "concrete_block_world_model/world_model/continuous_perception.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
 
 #include <algorithm>
@@ -64,39 +63,15 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
   BlockArray out;
   out.header = header;
 
-  const rclcpp::Time now_stamp(header.stamp);
-  // The staleness timeout only makes sense in continuous mode, where every frame
-  // re-observes visible blocks and refreshes last_seen. In single-shot mode nothing
-  // re-observes a discovered block, so evicting on the timeout would delete exactly
-  // the blocks the caller wants to keep. Single-shot blocks persist until explicitly
-  // cleared (clear_world_model / clear_block_goals) or overwritten.
-  const bool timeout_eviction_enabled =
-    perception_mode_.load() == PerceptionMode::kContinuous;
+  // Single-shot world model: blocks persist until explicitly cleared
+  // (clear_world_model / clear_block_goals) or overwritten by a new observation.
+  // There is no staleness timeout -- nothing periodically re-observes blocks, so
+  // an age-based eviction would delete exactly the results the caller wants to keep.
   {
     std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-    for (auto it = persistent_world_.begin(); it != persistent_world_.end(); ) {
-      const rclcpp::Time seen(it->second.last_seen);
-      const bool task_protected =
-        protect_task_blocks_from_timeout_ &&
-        it->second.task_status != Block::TASK_UNKNOWN &&
-        it->second.task_status != Block::TASK_FREE;
-      if (seeded_block_ids_.count(it->first) > 0U || task_protected) {
-        it->second.last_seen = header.stamp;
-        refreshContinuousBlockConfidenceLocked(it->second, now_stamp.seconds());
-        out.blocks.push_back(it->second);
-        ++it;
-        continue;
-      }
-      if (timeout_eviction_enabled &&
-        (now_stamp - seen).seconds() > runtime_cfg_.object_timeout_s)
-      {
-        continuous_tracks_.erase(it->first);
-        it = persistent_world_.erase(it);
-        continue;
-      }
-      refreshContinuousBlockConfidenceLocked(it->second, now_stamp.seconds());
-      out.blocks.push_back(it->second);
-      ++it;
+    out.blocks.reserve(persistent_world_.size());
+    for (const auto & kv : persistent_world_) {
+      out.blocks.push_back(kv.second);
     }
   }
 
@@ -145,7 +120,6 @@ void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg:
     return;
   }
 
-  const rclcpp::Time stamp(header.stamp, get_clock()->get_clock_type());
   std::lock_guard<std::mutex> lock(persistent_world_mutex_);
   for (const auto & id : task_move_ids) {
     auto it = persistent_world_.find(id);
@@ -178,31 +152,7 @@ void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg:
       it->second,
       kPrecisePositionSigmaMinM,
       kPreciseOrientationSigmaRad);
-
-    cbpwm::BlockObservation observation;
-    observation.block = it->second;
-    observation.precise = true;
-    continuous_tracks_[id] = cbpwm::initializeTrack(
-      observation,
-      stamp.seconds(),
-      continuous_cfg_.filtering);
   }
-}
-
-void PerceptionOrchestratorNode::refreshContinuousBlockConfidenceLocked(
-  Block & block,
-  double now_s) const
-{
-  if (!continuous_cfg_.filtering_enabled) {
-    return;
-  }
-  const auto track_it = continuous_tracks_.find(block.id);
-  if (track_it == continuous_tracks_.end()) {
-    return;
-  }
-  block.confidence =
-    static_cast<float>(
-    cbpwm::trackConfidence(track_it->second, continuous_cfg_.filtering, now_s));
 }
 
 void PerceptionOrchestratorNode::publishDetectionOverlay(
@@ -227,18 +177,11 @@ void PerceptionOrchestratorNode::syncCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr image,
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
 {
-  bool have_one_shot = false;
   {
+    // Single-shot only: a synced frame pair is processed exclusively to serve an
+    // active run_pose_estimation request. When idle we drop the pair immediately.
     std::lock_guard<std::mutex> lock(one_shot_mutex_);
-    have_one_shot = active_one_shot_.mode != cbpwm::OneShotMode::kNone;
-  }
-
-  if (!have_one_shot) {
-    if (perception_mode_.load() != PerceptionMode::kContinuous) {
-      return;
-    }
-    const uint64_t frame_index = ++continuous_seen_frames_;
-    if ((frame_index % static_cast<uint64_t>(continuous_cfg_.process_every_n_frames)) != 0U) {
+    if (active_one_shot_.mode == cbpwm::OneShotMode::kNone) {
       return;
     }
   }
@@ -264,11 +207,7 @@ void PerceptionOrchestratorNode::syncCallback(
     return;
   }
 
-  if (have_one_shot) {
-    processFrame(image, cloud);
-  } else {
-    processContinuousFrame(image, cloud);
-  }
+  processFrame(image, cloud);
 }
 
 void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(

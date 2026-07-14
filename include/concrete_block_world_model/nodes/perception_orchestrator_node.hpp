@@ -43,14 +43,11 @@
 #include "concrete_block_world_model_interfaces/srv/clear_world_model.hpp"
 #include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
-#include "concrete_block_world_model_interfaces/srv/set_perception_mode.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_goal.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
-#include "concrete_block_world_model/world_model/block_filter.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
-#include "concrete_block_world_model/world_model/continuous_perception.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
@@ -71,7 +68,6 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using GetPlanningSceneSrv = concrete_block_world_model_interfaces::srv::GetPlanningScene;
   using ExtractMaskCutoutSrv = concrete_block_perception_interfaces::srv::ExtractMaskCutout;
   using RunPoseSrv = concrete_block_world_model_interfaces::srv::RunPoseEstimation;
-  using SetPerceptionModeSrv = concrete_block_world_model_interfaces::srv::SetPerceptionMode;
   using UpsertBlockSrv = concrete_block_world_model_interfaces::srv::UpsertBlock;
   using SetBlockGoalSrv = concrete_block_world_model_interfaces::srv::SetBlockGoal;
   using ClearBlockGoalsSrv = concrete_block_world_model_interfaces::srv::ClearBlockGoals;
@@ -103,45 +99,11 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     uint32_t height{0};
   };
 
-  enum class PerceptionMode
-  {
-    kIdle,
-    kContinuous
-  };
-
-  struct ContinuousConfig
-  {
-    int process_every_n_frames{3};
-    double segmentation_timeout_s{1.0};
-    double cutout_timeout_s{1.0};
-    int min_mask_pixels{2000};
-    double min_mask_fill_ratio{0.15};
-    int min_valid_cloud_points{120};
-    cbpwm::ContinuousMaskMergeConfig mask_merge;
-    bool registration_enabled{false};
-    bool require_registration{false};
-    double registration_timeout_s{3.0};
-    int registration_max_per_frame{1};
-    double association_max_distance_m{0.8};
-    double association_max_age_s{20.0};
-    bool filtering_enabled{false};
-    cbpwm::BlockFilterConfig filtering;
-  };
-
-  struct ContinuousStageTimings
-  {
-    int64_t cutout_ms{0};
-    int64_t coarse_ms{0};
-    int64_t registration_ms{0};
-    int64_t upsert_ms{0};
-  };
-
   struct RuntimeConfig
   {
     double min_fitness{0.3};
     double max_rmse{0.05};
     double max_sync_delta_s{0.06};
-    double object_timeout_s{10.0};
     double association_max_distance_m{0.45};
     double association_max_age_s{20.0};
     double min_update_confidence{0.25};
@@ -257,9 +219,6 @@ private:
   void handleSetBlockTaskStatus(
     const std::shared_ptr<SetBlockTaskStatusSrv::Request> request,
     std::shared_ptr<SetBlockTaskStatusSrv::Response> response);
-  void handleSetPerceptionMode(
-    const std::shared_ptr<SetPerceptionModeSrv::Request> request,
-    std::shared_ptr<SetPerceptionModeSrv::Response> response);
   void handleUpsertBlock(
     const std::shared_ptr<UpsertBlockSrv::Request> request,
     std::shared_ptr<UpsertBlockSrv::Response> response);
@@ -275,10 +234,6 @@ private:
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
   void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
-  void refreshContinuousBlockConfidenceLocked(Block & block, double now_s) const;
-  void recordContinuousTrackMisses(
-    const std::unordered_set<std::string> & observed_track_ids,
-    double now_s);
   void publishDetectionOverlay(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const vision_msgs::msg::Detection2DArray & detections,
@@ -294,60 +249,6 @@ private:
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
     std::chrono::steady_clock::time_point t_start,
     const OneShotRequest & run_request);
-  void handleContinuousSegmentationResponse(
-    rclcpp::Client<SegmentSrv>::SharedFuture seg_future,
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    std::chrono::steady_clock::time_point t_start);
-  void processContinuousFrame(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
-  std::vector<cbpwm::ContinuousMaskCandidate> buildContinuousCandidates(
-    const SegmentSrv::Response & seg_res,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    const cv::Mat & full_mask,
-    const Eigen::Vector3d * camera_origin_world,
-    ContinuousStageTimings & timings,
-    cv::Mat & rejected_mask,
-    size_t & rejected_count);
-  bool buildContinuousObservation(
-    const cbpwm::ContinuousMaskGroup & group,
-    size_t group_index,
-    const std::vector<cbpwm::ContinuousMaskCandidate> & candidates,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    const Eigen::Vector3d * camera_origin_world,
-    int & registration_attempts,
-    ContinuousStageTimings & timings,
-    cbpwm::BlockObservation & out_observation);
-  bool tryPreciseContinuousRegistration(
-    const cv::Mat & mask,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    const std_msgs::msg::Header & header,
-    size_t group_index,
-    const std::string & fragments,
-    int mask_pixels,
-    int & registration_attempts,
-    ContinuousStageTimings & timings,
-    Block & out_block,
-    std::string & reason);
-  bool applyContinuousObservation(
-    const cbpwm::BlockObservation & observation,
-    const std_msgs::msg::Header & header,
-    ContinuousStageTimings & timings,
-    std::string & assigned_id,
-    std::string & reason);
-  bool applyDirectContinuousObservation(
-    const cbpwm::BlockObservation & observation,
-    const std_msgs::msg::Header & header,
-    const cbpwm::AssociationConfig & assoc_cfg,
-    std::string & assigned_id,
-    std::string & reason);
-  bool applyFilteredContinuousObservation(
-    const cbpwm::BlockObservation & observation,
-    const std_msgs::msg::Header & header,
-    const cbpwm::AssociationConfig & assoc_cfg,
-    std::string & assigned_id,
-    std::string & reason);
   void processFrame(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud);
@@ -368,7 +269,6 @@ private:
   rclcpp::Service<GetCoarseSrv>::SharedPtr get_coarse_srv_;
   rclcpp::Service<GetPlanningSceneSrv>::SharedPtr get_planning_scene_srv_;
   rclcpp::Service<RunPoseSrv>::SharedPtr run_pose_srv_;
-  rclcpp::Service<SetPerceptionModeSrv>::SharedPtr set_perception_mode_srv_;
   rclcpp::CallbackGroup::SharedPtr run_pose_cb_group_;
   rclcpp::CallbackGroup::SharedPtr action_client_cb_group_;
   rclcpp::TimerBase::SharedPtr marker_refresh_timer_;
@@ -379,20 +279,9 @@ private:
   size_t last_published_block_count_{0};
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr continuous_merged_mask_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr refine_grasped_roi_input_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_seg_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_cutout_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_coarse_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_registration_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_upsert_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_total_ms_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_detections_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_accepted_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr continuous_timing_rejected_pub_;
 
   std::unordered_map<std::string, Block> persistent_world_;
-  std::unordered_map<std::string, cbpwm::FilteredBlockTrack> continuous_tracks_;
   std::mutex persistent_world_mutex_;
   std::unordered_set<std::string> seeded_block_ids_;
 
@@ -410,10 +299,6 @@ private:
   std::vector<PlanningSceneObject> static_scene_objects_;
   std::array<double, 3> block_dimensions_m_{0.6, 0.9, 0.6};
   RuntimeConfig runtime_cfg_;
-  ContinuousConfig continuous_cfg_;
-  std::atomic<PerceptionMode> perception_mode_{PerceptionMode::kIdle};
-  std::atomic<uint64_t> continuous_seen_frames_{0};
-  bool protect_task_blocks_from_timeout_{true};
   std::atomic<bool> debug_detection_overlay_enabled_{true};
   std::atomic<bool> debug_refine_grasped_roi_input_enabled_{true};
   bool perf_log_timing_enabled_{true};

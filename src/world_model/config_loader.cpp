@@ -313,13 +313,14 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   WorldModelConfig cfg;
 
   (void)node.declare_parameter<std::string>("pipeline_mode", "full");
-  cfg.perception_mode = node.declare_parameter<std::string>("perception_mode", "IDLE");
+  // "perception_mode" is still accepted from launch files for backward compatibility
+  // but is ignored: the world model is single-shot only (run_pose_estimation).
+  (void)node.declare_parameter<std::string>("perception_mode", "IDLE");
   cfg.min_fitness = node.declare_parameter<double>("min_fitness", 0.3);
   cfg.max_rmse = node.declare_parameter<double>("max_rmse", 0.05);
   cfg.object_class = node.declare_parameter<std::string>("object_class", "concrete_block");
   cfg.world_frame = node.declare_parameter<std::string>("world_frame", "world");
   cfg.max_sync_delta_s = node.declare_parameter<double>("sync.max_delta_s", 0.06);
-  cfg.object_timeout_s = node.declare_parameter<double>("world_model.object_timeout_s", 10.0);
   cfg.association_max_distance_m =
     node.declare_parameter<double>("world_model.association_max_distance_m", 0.45);
   cfg.association_max_age_s = node.declare_parameter<double>(
@@ -328,125 +329,11 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.min_update_confidence = node.declare_parameter<double>(
     "world_model.min_update_confidence",
     0.25);
-  cfg.protect_task_blocks_from_timeout = node.declare_parameter<bool>(
-    "world_model.protect_task_blocks_from_timeout",
-    true);
   cfg.task_move_fk_tracking_enabled = node.declare_parameter<bool>(
     "task_move.fk_tracking.enabled",
     true);
   cfg.refine_target_max_distance_m =
     node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
-  cfg.continuous_process_every_n_frames = node.declare_parameter<int>(
-    "continuous.process_every_n_frames",
-    3);
-  cfg.continuous_segmentation_timeout_s = node.declare_parameter<double>(
-    "continuous.segmentation_timeout_s",
-    1.0);
-  cfg.continuous_cutout_timeout_s = node.declare_parameter<double>(
-    "continuous.cutout_timeout_s",
-    1.0);
-  cfg.continuous_min_mask_pixels = node.declare_parameter<int>(
-    "continuous.quality.min_mask_pixels",
-    2000);
-  cfg.continuous_min_mask_fill_ratio = node.declare_parameter<double>(
-    "continuous.quality.min_mask_fill_ratio",
-    0.15);
-  cfg.continuous_min_valid_cloud_points = node.declare_parameter<int>(
-    "continuous.quality.min_valid_cloud_points",
-    120);
-  cfg.continuous_mask_merge.enabled = node.declare_parameter<bool>(
-    "continuous.mask_merge.enabled",
-    cfg.continuous_mask_merge.enabled);
-  cfg.continuous_mask_merge.max_centroid_distance_m = node.declare_parameter<double>(
-    "continuous.mask_merge.max_centroid_distance_m",
-    cfg.continuous_mask_merge.max_centroid_distance_m);
-  cfg.continuous_mask_merge.occlusion_aware_enabled = node.declare_parameter<bool>(
-    "continuous.mask_merge.occlusion_aware_enabled",
-    cfg.continuous_mask_merge.occlusion_aware_enabled);
-  cfg.continuous_mask_merge.max_bbox_gap_px = node.declare_parameter<double>(
-    "continuous.mask_merge.max_bbox_gap_px",
-    cfg.continuous_mask_merge.max_bbox_gap_px);
-  cfg.continuous_mask_merge.min_bbox_axis_overlap = node.declare_parameter<double>(
-    "continuous.mask_merge.min_bbox_axis_overlap",
-    cfg.continuous_mask_merge.min_bbox_axis_overlap);
-  cfg.continuous_mask_merge.min_bbox_overlap_ratio = node.declare_parameter<double>(
-    "continuous.mask_merge.min_bbox_overlap_ratio",
-    cfg.continuous_mask_merge.min_bbox_overlap_ratio);
-  cfg.continuous_mask_merge.max_union_aspect_ratio = node.declare_parameter<double>(
-    "continuous.mask_merge.max_union_aspect_ratio",
-    cfg.continuous_mask_merge.max_union_aspect_ratio);
-  cfg.continuous_mask_merge.min_union_fill_ratio = node.declare_parameter<double>(
-    "continuous.mask_merge.min_union_fill_ratio",
-    cfg.continuous_mask_merge.min_union_fill_ratio);
-  cfg.continuous_registration_enabled = node.declare_parameter<bool>(
-    "continuous.registration.enabled",
-    false);
-  cfg.continuous_require_registration = node.declare_parameter<bool>(
-    "continuous.require_registration",
-    false);
-  cfg.continuous_registration_timeout_s = node.declare_parameter<double>(
-    "continuous.registration.timeout_s",
-    3.0);
-  cfg.continuous_registration_max_per_frame = node.declare_parameter<int>(
-    "continuous.registration.max_per_frame",
-    1);
-  cfg.continuous_association_max_distance_m = node.declare_parameter<double>(
-    "continuous.association.max_distance_m",
-    0.8);
-  cfg.continuous_association_max_age_s = node.declare_parameter<double>(
-    "continuous.association.max_age_s",
-    20.0);
-  cfg.continuous_filtering_enabled = node.declare_parameter<bool>(
-    "continuous.filtering.enabled",
-    false);
-  cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s =
-    node.declare_parameter<double>(
-    "continuous.filtering.position_process_sigma_m_per_sqrt_s",
-    cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s);
-  cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s =
-    node.declare_parameter<double>(
-    "continuous.filtering.orientation_process_sigma_rad_per_sqrt_s",
-    cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s);
-  cfg.continuous_filtering.mahalanobis_gate_threshold =
-    node.declare_parameter<double>(
-    "continuous.filtering.mahalanobis_gate_threshold",
-    cfg.continuous_filtering.mahalanobis_gate_threshold);
-  cfg.continuous_filtering.confirmation_hits =
-    node.declare_parameter<int>(
-    "continuous.filtering.confirmation_hits",
-    cfg.continuous_filtering.confirmation_hits);
-  cfg.continuous_filtering.confirmation_window =
-    node.declare_parameter<int>(
-    "continuous.filtering.confirmation_window",
-    cfg.continuous_filtering.confirmation_window);
-  cfg.continuous_filtering.max_consecutive_rejections =
-    node.declare_parameter<int>(
-    "continuous.filtering.max_consecutive_rejections",
-    cfg.continuous_filtering.max_consecutive_rejections);
-  cfg.continuous_filtering.tentative_max_age_s =
-    node.declare_parameter<double>(
-    "continuous.filtering.tentative_max_age_s",
-    cfg.continuous_filtering.tentative_max_age_s);
-  cfg.continuous_filtering.operational_confidence_enabled =
-    node.declare_parameter<bool>(
-    "continuous.filtering.operational_confidence_enabled",
-    cfg.continuous_filtering.operational_confidence_enabled);
-  cfg.continuous_filtering.confidence_stale_after_s =
-    node.declare_parameter<double>(
-    "continuous.filtering.confidence_stale_after_s",
-    cfg.continuous_filtering.confidence_stale_after_s);
-  cfg.continuous_filtering.confidence_age_half_life_s =
-    node.declare_parameter<double>(
-    "continuous.filtering.confidence_age_half_life_s",
-    cfg.continuous_filtering.confidence_age_half_life_s);
-  cfg.continuous_filtering.confidence_miss_penalty =
-    node.declare_parameter<double>(
-    "continuous.filtering.confidence_miss_penalty",
-    cfg.continuous_filtering.confidence_miss_penalty);
-  cfg.continuous_filtering.confidence_rejection_penalty =
-    node.declare_parameter<double>(
-    "continuous.filtering.confidence_rejection_penalty",
-    cfg.continuous_filtering.confidence_rejection_penalty);
   cfg.scene_discovery_coarse_fallback_enabled =
     node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
   cfg.scene_discovery_coarse_fallback_min_points =
@@ -560,139 +447,10 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
 
   clamp_min(cfg.min_fitness, 0.0, "min_fitness");
   clamp_min(cfg.max_rmse, 0.0, "max_rmse");
-  clamp_min(cfg.object_timeout_s, 0.1, "world_model.object_timeout_s");
   clamp_min(cfg.association_max_distance_m, 0.01, "world_model.association_max_distance_m");
   clamp_min(cfg.association_max_age_s, 0.1, "world_model.association_max_age_s");
   clamp_min(cfg.min_update_confidence, 0.0, "world_model.min_update_confidence");
   clamp_min(cfg.refine_target_max_distance_m, 0.01, "world_model.refine_target_max_distance_m");
-  clamp_min_i(cfg.continuous_process_every_n_frames, 1, "continuous.process_every_n_frames");
-  clamp_min(cfg.continuous_segmentation_timeout_s, 0.01, "continuous.segmentation_timeout_s");
-  clamp_min(cfg.continuous_cutout_timeout_s, 0.01, "continuous.cutout_timeout_s");
-  clamp_min_i(cfg.continuous_min_mask_pixels, 0, "continuous.quality.min_mask_pixels");
-  clamp_min_i(
-    cfg.continuous_min_valid_cloud_points, 0, "continuous.quality.min_valid_cloud_points");
-  clamp_min(
-    cfg.continuous_mask_merge.max_centroid_distance_m,
-    0.0,
-    "continuous.mask_merge.max_centroid_distance_m");
-  clamp_min(
-    cfg.continuous_mask_merge.max_bbox_gap_px,
-    0.0,
-    "continuous.mask_merge.max_bbox_gap_px");
-  clamp_min(
-    cfg.continuous_mask_merge.max_union_aspect_ratio,
-    1.0,
-    "continuous.mask_merge.max_union_aspect_ratio");
-  clamp_min(cfg.continuous_registration_timeout_s, 0.01, "continuous.registration.timeout_s");
-  clamp_min_i(cfg.continuous_registration_max_per_frame, 1, "continuous.registration.max_per_frame");
-  clamp_min(
-    cfg.continuous_association_max_distance_m, 0.01, "continuous.association.max_distance_m");
-  clamp_min(cfg.continuous_association_max_age_s, 0.1, "continuous.association.max_age_s");
-  if (cfg.continuous_require_registration && !cfg.continuous_registration_enabled) {
-    RCLCPP_WARN(
-      logger,
-      "continuous.require_registration=true but continuous.registration.enabled=false; "
-      "continuous observations will be rejected.");
-  }
-  clamp_min(
-    cfg.continuous_filtering.position_process_sigma_m_per_sqrt_s,
-    0.0,
-    "continuous.filtering.position_process_sigma_m_per_sqrt_s");
-  clamp_min(
-    cfg.continuous_filtering.orientation_process_sigma_rad_per_sqrt_s,
-    0.0,
-    "continuous.filtering.orientation_process_sigma_rad_per_sqrt_s");
-  clamp_min(
-    cfg.continuous_filtering.mahalanobis_gate_threshold,
-    0.01,
-    "continuous.filtering.mahalanobis_gate_threshold");
-  clamp_min_i(
-    cfg.continuous_filtering.confirmation_hits,
-    1,
-    "continuous.filtering.confirmation_hits");
-  clamp_min_i(
-    cfg.continuous_filtering.confirmation_window,
-    cfg.continuous_filtering.confirmation_hits,
-    "continuous.filtering.confirmation_window");
-  clamp_min_i(
-    cfg.continuous_filtering.max_consecutive_rejections,
-    1,
-    "continuous.filtering.max_consecutive_rejections");
-  clamp_min(
-    cfg.continuous_filtering.tentative_max_age_s,
-    0.1,
-    "continuous.filtering.tentative_max_age_s");
-  clamp_min(
-    cfg.continuous_filtering.confidence_stale_after_s,
-    0.0,
-    "continuous.filtering.confidence_stale_after_s");
-  clamp_min(
-    cfg.continuous_filtering.confidence_age_half_life_s,
-    0.01,
-    "continuous.filtering.confidence_age_half_life_s");
-  if (
-    cfg.continuous_filtering.confidence_miss_penalty < 0.0 ||
-    cfg.continuous_filtering.confidence_miss_penalty > 1.0)
-  {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.filtering.confidence_miss_penalty=%.3f, clamping to [0, 1]",
-      cfg.continuous_filtering.confidence_miss_penalty);
-    cfg.continuous_filtering.confidence_miss_penalty =
-      std::clamp(cfg.continuous_filtering.confidence_miss_penalty, 0.0, 1.0);
-  }
-  if (
-    cfg.continuous_filtering.confidence_rejection_penalty < 0.0 ||
-    cfg.continuous_filtering.confidence_rejection_penalty > 1.0)
-  {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.filtering.confidence_rejection_penalty=%.3f, clamping to [0, 1]",
-      cfg.continuous_filtering.confidence_rejection_penalty);
-    cfg.continuous_filtering.confidence_rejection_penalty =
-      std::clamp(cfg.continuous_filtering.confidence_rejection_penalty, 0.0, 1.0);
-  }
-  if (cfg.continuous_min_mask_fill_ratio < 0.0 || cfg.continuous_min_mask_fill_ratio > 1.0) {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.quality.min_mask_fill_ratio=%.3f, clamping to [0, 1]",
-      cfg.continuous_min_mask_fill_ratio);
-    cfg.continuous_min_mask_fill_ratio =
-      std::clamp(cfg.continuous_min_mask_fill_ratio, 0.0, 1.0);
-  }
-  if (
-    cfg.continuous_mask_merge.min_bbox_axis_overlap < 0.0 ||
-    cfg.continuous_mask_merge.min_bbox_axis_overlap > 1.0)
-  {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.mask_merge.min_bbox_axis_overlap=%.3f, clamping to [0, 1]",
-      cfg.continuous_mask_merge.min_bbox_axis_overlap);
-    cfg.continuous_mask_merge.min_bbox_axis_overlap =
-      std::clamp(cfg.continuous_mask_merge.min_bbox_axis_overlap, 0.0, 1.0);
-  }
-  if (
-    cfg.continuous_mask_merge.min_bbox_overlap_ratio < 0.0 ||
-    cfg.continuous_mask_merge.min_bbox_overlap_ratio > 1.0)
-  {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.mask_merge.min_bbox_overlap_ratio=%.3f, clamping to [0, 1]",
-      cfg.continuous_mask_merge.min_bbox_overlap_ratio);
-    cfg.continuous_mask_merge.min_bbox_overlap_ratio =
-      std::clamp(cfg.continuous_mask_merge.min_bbox_overlap_ratio, 0.0, 1.0);
-  }
-  if (
-    cfg.continuous_mask_merge.min_union_fill_ratio < 0.0 ||
-    cfg.continuous_mask_merge.min_union_fill_ratio > 1.0)
-  {
-    RCLCPP_WARN(
-      logger,
-      "Invalid continuous.mask_merge.min_union_fill_ratio=%.3f, clamping to [0, 1]",
-      cfg.continuous_mask_merge.min_union_fill_ratio);
-    cfg.continuous_mask_merge.min_union_fill_ratio =
-      std::clamp(cfg.continuous_mask_merge.min_union_fill_ratio, 0.0, 1.0);
-  }
   clamp_min_i(
     cfg.scene_discovery_coarse_fallback_min_points, 1,
     "scene_discovery_coarse_fallback.min_points");

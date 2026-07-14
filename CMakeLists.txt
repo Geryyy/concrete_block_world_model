@@ -26,7 +26,6 @@ find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_executable(world_model_node
-  src/nodes/perception_orchestrator_continuous.cpp
   src/nodes/perception_orchestrator_core.cpp
   src/nodes/perception_orchestrator_node.cpp
   src/nodes/perception_orchestrator_pipeline.cpp
@@ -36,9 +35,7 @@ add_executable(world_model_node
   src/utils/coarse_pose_utils.cpp
   src/utils/img_utils.cpp
   src/utils/world_model_utils.cpp
-  src/world_model/block_filter.cpp
   src/world_model/config_loader.cpp
-  src/world_model/continuous_perception.cpp
   src/world_model/refine_flow.cpp
   src/world_model/registration_flow.cpp
   src/world_model/roi_processing.cpp
@@ -106,59 +103,11 @@ if(BUILD_TESTING)
     ament_target_dependencies(test_world_model_utils
       concrete_block_world_model_interfaces
       std_msgs
-      visualization_msgs
-    )
-  endif()
-
-  ament_add_gtest(test_block_filter
-    test/test_block_filter.cpp
-    src/world_model/block_filter.cpp
-  )
-  if(TARGET test_block_filter)
-    target_include_directories(test_block_filter PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:include>
-      ${OpenCV_INCLUDE_DIRS}
-    )
-    target_link_libraries(test_block_filter
-      Eigen3::Eigen
-      ${OpenCV_LIBS}
-    )
-    ament_target_dependencies(test_block_filter
-      concrete_block_world_model_interfaces
-      geometry_msgs
-      rclcpp
-      vision_msgs
-    )
-  endif()
-
-  ament_add_gtest(test_continuous_perception
-    test/test_continuous_perception.cpp
-    src/world_model/continuous_perception.cpp
-    src/world_model/state_manager.cpp
-    src/utils/img_utils.cpp
-    src/utils/world_model_utils.cpp
-  )
-  if(TARGET test_continuous_perception)
-    target_include_directories(test_continuous_perception PUBLIC
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:include>
-      ${OpenCV_INCLUDE_DIRS}
-    )
-    target_link_libraries(test_continuous_perception
-      ${OpenCV_LIBS}
-    )
-    ament_target_dependencies(test_continuous_perception
-      concrete_block_world_model_interfaces
-      cv_bridge
-      geometry_msgs
-      rclcpp
-      sensor_msgs
-      std_msgs
       vision_msgs
       visualization_msgs
     )
   endif()
+
 endif()
 
 ament_package()

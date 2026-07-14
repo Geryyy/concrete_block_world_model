@@ -6,16 +6,12 @@ world_model_node:
     world_model:
       # Physical block size used for markers, planning objects, and coarse poses.
       block_dimensions_m: [0.9, 0.6, 0.6]
-      # Remove non-protected blocks after this many seconds without an update.
-      object_timeout_s: 3.0
       # Default max distance for matching an incoming observation to a known block.
       association_max_distance_m: 0.45
       # Default max age for a known block to be considered for association.
       association_max_age_s: 20.0
       # Ignore updates below this confidence unless explicitly targeted.
       min_update_confidence: 0.25
-      # Keep task-assigned blocks alive even when continuous perception loses them.
-      protect_task_blocks_from_timeout: true
       # Max distance for selecting an existing block as a refine target.
       refine_target_max_distance_m: 1.2
       # Fixed obstacles published with the world markers and planning scene.
@@ -62,8 +58,8 @@ world_model_node:
         #   dimensions: [0.450000, 0.650000, 1.512500]
 
       # ---- Advanced / experimental scene-discovery fallback ----
-      # Kept visible for ablation; normal continuous operation should rely on
-      # registered detections instead of inserting coarse fallback poses.
+      # Kept visible for ablation; normal operation should rely on registered
+      # detections instead of inserting coarse fallback poses.
       scene_discovery_coarse_fallback:
         # Allow scene discovery to insert coarse poses when registration fails.
         enable: true
@@ -86,97 +82,6 @@ world_model_node:
       fk_tracking:
         # Update TASK_MOVE blocks from TCP FK between vision refinements.
         enabled: true
-
-    # ----------------------------------
-    # Continuous coarse perception mode
-    # ----------------------------------
-    continuous:
-      # Run continuous perception every N synchronized input frames.
-      process_every_n_frames: 3
-      # Max wait for the segmentation service per continuous frame.
-      segmentation_timeout_s: 1.0
-      # Max wait for mask-to-point-cloud cutout per detection.
-      cutout_timeout_s: 1.0
-      # Reject continuous observations unless precise registration succeeds.
-      require_registration: true
-      quality:
-        # Reject detections with fewer mask pixels.
-        min_mask_pixels: 100
-        # Reject masks that fill too little of their bounding box.
-        min_mask_fill_ratio: 0.05
-        # Reject cutouts with too few valid 3D points.
-        min_valid_cloud_points: 120
-      registration:
-        # Keep continuous mode simple: register each detected mask directly,
-        # without mask merging, temporal filtering, or world-prior seeding.
-        # Run precise registration for accepted continuous detections.
-        enabled: true
-        # Max wait for one registration action.
-        timeout_s: 2.0
-        # Limit precise registrations per continuous frame.
-        max_per_frame: 2
-      association:
-        # Keep stacked blocks from collapsing into one track.
-        # Max distance for matching continuous observations to existing blocks.
-        max_distance_m: 0.3
-        # Max age for existing blocks to be considered by continuous association.
-        max_age_s: 10.0
-
-      # ---- Advanced / experimental continuous features ----
-      # Keep disabled unless explicitly running an ablation experiment.
-      mask_merge:
-        # Merge same-frame mask fragments before registration.
-        enabled: false
-        # Max 3D centroid distance for merge candidates.
-        max_centroid_distance_m: 0.6
-        # Use 2D bbox compatibility to merge masks split by occlusion.
-        occlusion_aware_enabled: false
-        # Max pixel gap between compatible bounding boxes.
-        max_bbox_gap_px: 24.0
-        # Required overlap along one bbox axis.
-        min_bbox_axis_overlap: 0.35
-        # Required 2D bbox intersection-over-union.
-        min_bbox_overlap_ratio: 0.20
-        # Reject merged masks with an implausibly long union bbox.
-        max_union_aspect_ratio: 2.8
-        # Reject merged masks whose union bbox is mostly empty.
-        min_union_fill_ratio: 0.08
-      filtering:
-        # Disabled by default so continuous mode keeps the legacy direct-upsert behavior.
-        # Enable probabilistic temporal filtering for continuous observations.
-        enabled: false
-        # Static-model random-walk process noise. Position/orientation covariance
-        # grows by sigma^2 * dt between accepted observations.
-        # Position process noise for covariance growth.
-        position_process_sigma_m_per_sqrt_s: 0.03
-        # Orientation process noise for covariance growth.
-        orientation_process_sigma_rad_per_sqrt_s: 0.05
-        # Chi-square gate for 3D position innovation. 7.81 ~= 95%.
-        # Reject observations outside this Mahalanobis gate.
-        mahalanobis_gate_threshold: 7.81
-        # Publish a new continuous track only after M hits inside the last N observations.
-        # Hits required before a tentative track becomes confirmed.
-        confirmation_hits: 2
-        # Observation window used for tentative-track confirmation.
-        confirmation_window: 3
-        # Treat repeated gated jumps as a genuinely moved/reappeared block.
-        # Rejections before reinitializing a filtered track.
-        max_consecutive_rejections: 3
-        # Drop tentative tracks that do not confirm within this time.
-        tentative_max_age_s: 2.0
-        # Optional operational confidence model for trust decisions. When enabled,
-        # confidence is covariance confidence multiplied by freshness, recent hit
-        # ratio, and rejection penalties.
-        # Publish confidence based on covariance, freshness, hits, and rejections.
-        operational_confidence_enabled: false
-        # Start reducing confidence after this age.
-        confidence_stale_after_s: 1.0
-        # Half-life for freshness confidence after the stale threshold.
-        confidence_age_half_life_s: 5.0
-        # Confidence multiplier applied after missed updates.
-        confidence_miss_penalty: 0.5
-        # Confidence multiplier applied after gated rejections.
-        confidence_rejection_penalty: 0.25
 
     # ----------------------------------
     # Registration gating

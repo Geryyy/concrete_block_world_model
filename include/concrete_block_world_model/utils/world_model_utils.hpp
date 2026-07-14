@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <std_msgs/msg/header.hpp>
+#include <vision_msgs/msg/detection2_d.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
@@ -12,6 +13,9 @@
 
 namespace cbp::world_model
 {
+
+// Detection confidence = top hypothesis score, or 1.0 when no hypothesis is present.
+double detectionConfidence(const vision_msgs::msg::Detection2D & det);
 
 enum class OneShotMode
 {
