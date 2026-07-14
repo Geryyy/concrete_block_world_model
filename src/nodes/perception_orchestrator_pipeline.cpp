@@ -173,6 +173,29 @@ void PerceptionOrchestratorNode::publishDetectionOverlay(
 }
 
 
+auto PerceptionOrchestratorNode::makeSegmentationRequest(
+  const sensor_msgs::msg::Image & image) const
+  -> std::shared_ptr<SegmentSrv::Request>
+{
+  auto seg_req = std::make_shared<SegmentSrv::Request>();
+  seg_req->image = image;
+  // Only pay for the annotated debug render when we are going to publish it.
+  seg_req->return_debug = debug_detection_overlay_enabled_.load();
+  return seg_req;
+}
+
+
+void PerceptionOrchestratorNode::publishYoloServiceDebugImage(
+  const sensor_msgs::msg::Image & debug_image)
+{
+  if (debug_detection_overlay_enabled_.load() && yolo_service_debug_pub_ &&
+    !debug_image.data.empty())
+  {
+    yolo_service_debug_pub_->publish(debug_image);
+  }
+}
+
+
 void PerceptionOrchestratorNode::syncCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr image,
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud)
@@ -255,6 +278,7 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
     if (debug_detection_overlay_enabled_.load() && det_debug_pub_) {
       publishDetectionOverlay(image, seg_res->detections, seg_res->mask);
     }
+    publishYoloServiceDebugImage(seg_res->debug_image);
 
     const auto t_after_track = t_after_seg;
     const size_t tracked_count = seg_detection_count;
@@ -481,9 +505,7 @@ void PerceptionOrchestratorNode::processFrame(
     return;
   }
 
-  auto seg_req = std::make_shared<SegmentSrv::Request>();
-  seg_req->image = *image;
-  seg_req->return_debug = false;
+  auto seg_req = makeSegmentationRequest(*image);
 
   segment_client_->async_send_request(
     seg_req,

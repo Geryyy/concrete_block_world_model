@@ -408,9 +408,7 @@ bool PerceptionOrchestratorNode::runSegmentationSync(
       return false;
     }
 
-    auto seg_req = std::make_shared<SegmentSrv::Request>();
-    seg_req->image = image;
-    seg_req->return_debug = false;
+    auto seg_req = makeSegmentationRequest(image);
 
     auto future = segment_client_->async_send_request(seg_req);
     const auto ret = future.wait_for(std::chrono::duration<double>(timeout_s));
@@ -429,6 +427,7 @@ bool PerceptionOrchestratorNode::runSegmentationSync(
       return false;
     }
 
+    publishYoloServiceDebugImage(out_response->debug_image);
     return true;
   }
 

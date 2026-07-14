@@ -238,6 +238,14 @@ private:
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const vision_msgs::msg::Detection2DArray & detections,
     const sensor_msgs::msg::Image & mask_msg);
+  // Build a segmentation request, requesting the annotated debug render only
+  // when the detection-overlay debug output is enabled.
+  auto makeSegmentationRequest(
+    const sensor_msgs::msg::Image & image) const
+  -> std::shared_ptr<SegmentSrv::Request>;
+  // Republish the service's annotated debug image on debug/yolo_service_debug_image
+  // (no-op when the debug output is disabled or the image is empty).
+  void publishYoloServiceDebugImage(const sensor_msgs::msg::Image & debug_image);
   void recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms);
   void initializeSeededWorld(const cbpwm::WorldModelConfig & startup);
   void syncCallback(
