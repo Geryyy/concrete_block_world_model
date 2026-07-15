@@ -2,10 +2,9 @@ world_model_node:
   ros__parameters:
     world_model:
       initial_blocks: |
-        - id: B0
+        - id: block_0
           frame_id: world
-          position: [-11.025, 0.239662, 3.0]
-          yaw_deg: 96.2006
-          pose_status: POSE_COARSE
-          task_status: TASK_PLACED
-          confidence: 1.0
+          position: [-13.0, 0.0, 0.6]
+          yaw_deg: 0.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
