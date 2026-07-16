@@ -55,6 +55,14 @@ struct SceneFlowRuntime
       const sensor_msgs::msg::PointCloud2 &,
       const SceneFlowRequest &,
       RegistrationCounters &)> try_coarse_fallback;
+
+  std::function<void(
+      uint32_t,
+      bool,
+      const concrete_block_world_model_interfaces::msg::Block &,
+      bool,
+      const std::string &,
+      const std::string &)> on_registration_result;
 };
 
 void processRegistrationCandidates(
@@ -65,4 +73,3 @@ void processRegistrationCandidates(
   RegistrationCounters & counters);
 
 }  // namespace cbp::world_model
-

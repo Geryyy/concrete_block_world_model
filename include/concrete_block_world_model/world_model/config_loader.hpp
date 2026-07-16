@@ -53,6 +53,8 @@ struct WorldModelConfig
   double coarse_front_center_offset_rect_m{0.30};
   bool debug_detection_overlay_enabled{true};
   bool debug_refine_grasped_roi_input_enabled{true};
+  bool debug_scene_discovery_dump_enabled{false};
+  std::string debug_scene_discovery_dump_dir{"scene_discovery_dump"};
   bool perf_log_timing_enabled{true};
   int perf_log_every_n_frames{20};
   double marker_refresh_period_s{0.5};

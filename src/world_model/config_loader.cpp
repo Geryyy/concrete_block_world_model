@@ -354,6 +354,10 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     "debug.publish_detection_overlay", true);
   cfg.debug_refine_grasped_roi_input_enabled =
     node.declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
+  cfg.debug_scene_discovery_dump_enabled =
+    node.declare_parameter<bool>("debug.scene_discovery_dump.enable", false);
+  cfg.debug_scene_discovery_dump_dir =
+    node.declare_parameter<std::string>("debug.scene_discovery_dump.dir", "scene_discovery_dump");
   cfg.perf_log_timing_enabled = node.declare_parameter<bool>("perf.log_timing", true);
   cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 100);
   cfg.marker_refresh_period_s = node.declare_parameter<double>(

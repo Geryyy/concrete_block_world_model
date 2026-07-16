@@ -6,8 +6,135 @@
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
 #include <limits>
+#include <sstream>
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+
+namespace
+{
+
+std::string yamlEscape(const std::string & value)
+{
+  std::string out;
+  out.reserve(value.size());
+  for (const char c : value) {
+    if (c == '\\' || c == '"') {
+      out.push_back('\\');
+    }
+    out.push_back(c);
+  }
+  return out;
+}
+
+std::string stampBaseName(const builtin_interfaces::msg::Time & stamp, uint64_t sequence)
+{
+  std::ostringstream ss;
+  ss << stamp.sec << "_"
+     << std::setw(9) << std::setfill('0') << stamp.nanosec
+     << "_seq" << sequence;
+  return ss.str();
+}
+
+bool writeImagePng(
+  const std::filesystem::path & path,
+  const sensor_msgs::msg::Image & image,
+  const rclcpp::Logger & logger,
+  const std::string & label)
+{
+  try {
+    auto cv_ptr = cv_bridge::toCvCopy(image);
+    cv::Mat out = cv_ptr->image;
+    const std::string & encoding = cv_ptr->encoding;
+    if (encoding == "rgb8") {
+      cv::cvtColor(out, out, cv::COLOR_RGB2BGR);
+    } else if (encoding == "rgba8") {
+      cv::cvtColor(out, out, cv::COLOR_RGBA2BGRA);
+    }
+    if (!cv::imwrite(path.string(), out)) {
+      RCLCPP_WARN(logger, "Scene-discovery dump: failed to write %s image to %s",
+        label.c_str(), path.c_str());
+      return false;
+    }
+    return true;
+  } catch (const std::exception & exc) {
+    RCLCPP_WARN(logger, "Scene-discovery dump: failed to write %s image: %s",
+      label.c_str(), exc.what());
+    return false;
+  }
+}
+
+bool writeMaskPng(
+  const std::filesystem::path & path,
+  const sensor_msgs::msg::Image & mask,
+  const rclcpp::Logger & logger)
+{
+  try {
+    auto cv_ptr = cv_bridge::toCvCopy(mask, "mono8");
+    if (!cv::imwrite(path.string(), cv_ptr->image)) {
+      RCLCPP_WARN(logger, "Scene-discovery dump: failed to write mask to %s", path.c_str());
+      return false;
+    }
+    return true;
+  } catch (const std::exception & exc) {
+    RCLCPP_WARN(logger, "Scene-discovery dump: failed to write mask: %s", exc.what());
+    return false;
+  }
+}
+
+bool writeCloudPcd(
+  const std::filesystem::path & path,
+  const sensor_msgs::msg::PointCloud2 & cloud,
+  const rclcpp::Logger & logger)
+{
+  try {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(cloud, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_y(cloud, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(cloud, "z");
+
+    std::vector<std::array<float, 3>> points;
+    points.reserve(static_cast<size_t>(cloud.width) * static_cast<size_t>(cloud.height));
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+      if (std::isfinite(*iter_x) && std::isfinite(*iter_y) && std::isfinite(*iter_z)) {
+        points.push_back({*iter_x, *iter_y, *iter_z});
+      }
+    }
+
+    std::ofstream out(path);
+    if (!out.is_open()) {
+      RCLCPP_WARN(logger, "Scene-discovery dump: failed to open cloud path %s", path.c_str());
+      return false;
+    }
+
+    out << "# .PCD v0.7 - Point Cloud Data file format\n"
+        << "VERSION 0.7\n"
+        << "FIELDS x y z\n"
+        << "SIZE 4 4 4\n"
+        << "TYPE F F F\n"
+        << "COUNT 1 1 1\n"
+        << "WIDTH " << points.size() << "\n"
+        << "HEIGHT 1\n"
+        << "VIEWPOINT 0 0 0 1 0 0 0\n"
+        << "POINTS " << points.size() << "\n"
+        << "DATA ascii\n";
+    out << std::setprecision(9);
+    for (const auto & p : points) {
+      out << p[0] << " " << p[1] << " " << p[2] << "\n";
+    }
+    return true;
+  } catch (const std::exception & exc) {
+    RCLCPP_WARN(logger, "Scene-discovery dump: failed to write cloud: %s", exc.what());
+    return false;
+  }
+}
+
+}  // namespace
 
 void PerceptionOrchestratorNode::publishWorldMarkers(
   const std_msgs::msg::Header & header,
@@ -195,6 +322,142 @@ void PerceptionOrchestratorNode::publishYoloServiceDebugImage(
   }
 }
 
+std::filesystem::path PerceptionOrchestratorNode::createSceneDiscoveryDump(
+  const sensor_msgs::msg::Image & image,
+  const sensor_msgs::msg::PointCloud2 & cloud,
+  const std::vector<cbpwm::DetectionCandidate> & candidates,
+  const SegmentSrv::Response & seg_res,
+  const OneShotRequest & run_request)
+{
+  if (!debug_scene_discovery_dump_enabled_ ||
+    run_request.mode != cbpwm::OneShotMode::kSceneDiscovery)
+  {
+    return {};
+  }
+
+  const auto dump_dir =
+    debug_scene_discovery_dump_dir_ / stampBaseName(cloud.header.stamp, run_request.sequence);
+  const auto masks_dir = dump_dir / "masks";
+  try {
+    std::filesystem::create_directories(masks_dir);
+  } catch (const std::exception & exc) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery dump: failed to create %s: %s",
+      dump_dir.c_str(),
+      exc.what());
+    return {};
+  }
+
+  writeImagePng(dump_dir / "rgb.png", image, get_logger(), "rgb");
+  writeCloudPcd(dump_dir / "cloud.pcd", cloud, get_logger());
+  if (!seg_res.mask.data.empty()) {
+    writeMaskPng(dump_dir / "segmentation_mask.png", seg_res.mask, get_logger());
+  }
+
+  for (const auto & candidate : candidates) {
+    std::ostringstream name;
+    name << "candidate_" << std::setw(3) << std::setfill('0') << candidate.first << "_mask.png";
+    writeMaskPng(masks_dir / name.str(), candidate.second, get_logger());
+  }
+
+  std::ofstream meta(dump_dir / "metadata.yaml");
+  if (meta.is_open()) {
+    meta << "mode: \"" << cbpwm::oneShotModeToString(run_request.mode) << "\"\n";
+    meta << "sequence: " << run_request.sequence << "\n";
+    meta << "target_block_id: \"" << yamlEscape(run_request.target_block_id) << "\"\n";
+    meta << "world_frame: \"" << yamlEscape(world_frame_) << "\"\n";
+    meta << "image:\n";
+    meta << "  frame_id: \"" << yamlEscape(image.header.frame_id) << "\"\n";
+    meta << "  stamp:\n";
+    meta << "    sec: " << image.header.stamp.sec << "\n";
+    meta << "    nanosec: " << image.header.stamp.nanosec << "\n";
+    meta << "  width: " << image.width << "\n";
+    meta << "  height: " << image.height << "\n";
+    meta << "  encoding: \"" << yamlEscape(image.encoding) << "\"\n";
+    meta << "  file: rgb.png\n";
+    meta << "cloud:\n";
+    meta << "  frame_id: \"" << yamlEscape(cloud.header.frame_id) << "\"\n";
+    meta << "  stamp:\n";
+    meta << "    sec: " << cloud.header.stamp.sec << "\n";
+    meta << "    nanosec: " << cloud.header.stamp.nanosec << "\n";
+    meta << "  width: " << cloud.width << "\n";
+    meta << "  height: " << cloud.height << "\n";
+    meta << "  file: cloud.pcd\n";
+    meta << "detections: " << seg_res.detections.detections.size() << "\n";
+    meta << "registration_candidates: " << candidates.size() << "\n";
+    meta << "candidate_masks:\n";
+    for (const auto & candidate : candidates) {
+      meta << "  - detection_id: " << candidate.first << "\n";
+      meta << "    file: masks/candidate_"
+           << std::setw(3) << std::setfill('0') << candidate.first << "_mask.png\n";
+    }
+  }
+
+  RCLCPP_INFO(get_logger(), "Scene-discovery dump started: %s", dump_dir.c_str());
+  return dump_dir;
+}
+
+void PerceptionOrchestratorNode::writeSceneDiscoveryDumpSummary(
+  const std::filesystem::path & dump_dir,
+  const std::vector<std::string> & registration_records,
+  const cbpwm::RegistrationCounters & counters)
+{
+  if (dump_dir.empty()) {
+    return;
+  }
+
+  std::ofstream out(dump_dir / "registrations.yaml");
+  if (!out.is_open()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery dump: failed to write registrations.yaml in %s",
+      dump_dir.c_str());
+    return;
+  }
+
+  out << "registrations_ok: " << counters.registrations_ok << "\n";
+  out << "coarse_upserts_ok: " << counters.coarse_upserts_ok << "\n";
+  out << "records:\n";
+  for (const auto & record : registration_records) {
+    out << record;
+  }
+}
+
+std::string PerceptionOrchestratorNode::formatSceneDiscoveryDumpRecord(
+  uint32_t detection_id,
+  bool registration_ok,
+  const Block & block,
+  bool upsert_ok,
+  const std::string & assigned_id,
+  const std::string & reason) const
+{
+  std::ostringstream out;
+  out << "  - detection_id: " << detection_id << "\n";
+  out << "    registration_ok: " << (registration_ok ? "true" : "false") << "\n";
+  out << "    upsert_ok: " << (upsert_ok ? "true" : "false") << "\n";
+  out << "    assigned_id: \"" << yamlEscape(assigned_id) << "\"\n";
+  out << "    reason: \"" << yamlEscape(reason) << "\"\n";
+  if (registration_ok) {
+    out << "    incoming_id: \"" << yamlEscape(block.id) << "\"\n";
+    out << "    confidence: " << block.confidence << "\n";
+    out << "    pose_status: " << block.pose_status << "\n";
+    out << "    task_status: " << block.task_status << "\n";
+    out << "    pose:\n";
+    out << "      frame_id: \"" << yamlEscape(world_frame_) << "\"\n";
+    out << "      position: ["
+        << block.pose.position.x << ", "
+        << block.pose.position.y << ", "
+        << block.pose.position.z << "]\n";
+    out << "      orientation_xyzw: ["
+        << block.pose.orientation.x << ", "
+        << block.pose.orientation.y << ", "
+        << block.pose.orientation.z << ", "
+        << block.pose.orientation.w << "]\n";
+  }
+  return out.str();
+}
+
 
 void PerceptionOrchestratorNode::syncCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr image,
@@ -334,6 +597,9 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
 
     auto candidates = cbpwm::buildRegistrationCandidates(
       *seg_res, run_request.mode, run_request.target_block_id, get_logger());
+    const auto scene_dump_dir =
+      createSceneDiscoveryDump(*image, *cloud, candidates, *seg_res, run_request);
+    std::vector<std::string> scene_dump_registration_records;
 
     const size_t registration_candidates = candidates.size();
     RCLCPP_INFO(
@@ -349,6 +615,8 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
         t_after_track - t_start).count();
       recordTiming(total_ms, 0, 0, total_ms);
       publishPersistentWorld(cloud->header);
+      cbpwm::RegistrationCounters counters;
+      writeSceneDiscoveryDumpSummary(scene_dump_dir, {}, counters);
 
       if (run_request.mode == cbpwm::OneShotMode::kSceneDiscovery) {
         completeOneShotRequest(
@@ -457,6 +725,26 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
           have_camera_origin ? &camera_origin_world : nullptr,
           out_counters);
       };
+    scene_rt.on_registration_result =
+      [this, &scene_dump_dir, &scene_dump_registration_records](
+      uint32_t detection_id,
+      bool registration_ok,
+      const Block & block,
+      bool upsert_ok,
+      const std::string & assigned_id,
+      const std::string & reason) {
+        if (scene_dump_dir.empty()) {
+          return;
+        }
+        scene_dump_registration_records.push_back(
+          formatSceneDiscoveryDumpRecord(
+            detection_id,
+            registration_ok,
+            block,
+            upsert_ok,
+            assigned_id,
+            reason));
+      };
 
     cbpwm::processRegistrationCandidates(
       candidates,
@@ -464,6 +752,7 @@ void PerceptionOrchestratorNode::handleOneShotSegmentationResponse(
       scene_req,
       scene_rt,
       counters);
+    writeSceneDiscoveryDumpSummary(scene_dump_dir, scene_dump_registration_records, counters);
 
     const auto t_reg_end = std::chrono::steady_clock::now();
     const auto seg_ms = std::chrono::duration_cast<std::chrono::milliseconds>(

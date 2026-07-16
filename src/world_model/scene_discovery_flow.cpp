@@ -58,6 +58,16 @@ void processRegistrationCandidates(
       best_dist);
 
     if (!best_found) {
+      if (rt.on_registration_result) {
+        concrete_block_world_model_interfaces::msg::Block empty_block;
+        rt.on_registration_result(
+          0U,
+          false,
+          empty_block,
+          false,
+          "",
+          "targeted refine: no candidate within expected-pose gate");
+      }
       RCLCPP_WARN(
         rt.logger,
         "Targeted refine failed for '%s': no candidate within %.3f m of expected pose.",
@@ -70,6 +80,15 @@ void processRegistrationCandidates(
     std::string upsert_reason;
     const bool upsert_ok = rt.upsert_block(best_block, assigned_id, upsert_reason);
     if (!upsert_ok) {
+      if (rt.on_registration_result) {
+        rt.on_registration_result(
+          0U,
+          true,
+          best_block,
+          false,
+          "",
+          upsert_reason);
+      }
       RCLCPP_WARN(
         rt.logger,
         "Targeted refine rejected after association checks: %s",
@@ -78,6 +97,15 @@ void processRegistrationCandidates(
     }
 
     ++counters.registrations_ok;
+    if (rt.on_registration_result) {
+      rt.on_registration_result(
+        0U,
+        true,
+        best_block,
+        true,
+        assigned_id,
+        upsert_reason);
+    }
     RCLCPP_INFO(
       rt.logger,
       "Targeted refine accepted: target=%s assigned=%s dist=%.3f m",
@@ -110,6 +138,15 @@ void processRegistrationCandidates(
       const bool upsert_ok = rt.upsert_block(block, assigned_id, upsert_reason);
       if (upsert_ok) {
         ++counters.registrations_ok;
+        if (rt.on_registration_result) {
+          rt.on_registration_result(
+            candidate.first,
+            true,
+            block,
+            true,
+            assigned_id,
+            upsert_reason);
+        }
         RCLCPP_INFO(
           rt.logger,
           "Registration accepted and associated: detection_id=%u incoming=%s assigned=%s confidence=%.3f pose_status=%d pos=[%.3f, %.3f, %.3f]",
@@ -122,6 +159,15 @@ void processRegistrationCandidates(
           block.pose.position.y,
           block.pose.position.z);
       } else {
+        if (rt.on_registration_result) {
+          rt.on_registration_result(
+            candidate.first,
+            true,
+            block,
+            false,
+            "",
+            upsert_reason);
+        }
         RCLCPP_WARN(
           rt.logger,
           "Registration rejected after association checks: detection_id=%u incoming=%s confidence=%.3f reason=%s",
@@ -143,6 +189,16 @@ void processRegistrationCandidates(
       request,
       counters);
     if (!fallback_ok) {
+      if (rt.on_registration_result) {
+        concrete_block_world_model_interfaces::msg::Block empty_block;
+        rt.on_registration_result(
+          candidate.first,
+          false,
+          empty_block,
+          false,
+          "",
+          reason);
+      }
       RCLCPP_WARN(
         rt.logger,
         "Registration rejected: detection_id=%u reason=%s",

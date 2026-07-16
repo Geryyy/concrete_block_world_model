@@ -115,6 +115,12 @@ world_model_node:
     debug:
       # Publish image overlays with detections and masks.
       publish_detection_overlay: true
+      # Dump scene-discovery datasets for standalone development.
+      # One folder per one-shot frame: rgb.png, cloud.pcd, masks, metadata.yaml,
+      # and registrations.yaml.
+      scene_discovery_dump:
+        enable: true
+        dir: scene_discovery_dump
 
     perf:
       # Emit periodic perception timing logs and timing topics.

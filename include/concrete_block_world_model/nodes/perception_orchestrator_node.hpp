@@ -256,6 +256,23 @@ private:
   // Republish the service's annotated debug image on debug/yolo_service_debug_image
   // (no-op when the debug output is disabled or the image is empty).
   void publishYoloServiceDebugImage(const sensor_msgs::msg::Image & debug_image);
+  std::filesystem::path createSceneDiscoveryDump(
+    const sensor_msgs::msg::Image & image,
+    const sensor_msgs::msg::PointCloud2 & cloud,
+    const std::vector<cbpwm::DetectionCandidate> & candidates,
+    const SegmentSrv::Response & seg_res,
+    const OneShotRequest & run_request);
+  void writeSceneDiscoveryDumpSummary(
+    const std::filesystem::path & dump_dir,
+    const std::vector<std::string> & registration_records,
+    const cbpwm::RegistrationCounters & counters);
+  std::string formatSceneDiscoveryDumpRecord(
+    uint32_t detection_id,
+    bool registration_ok,
+    const Block & block,
+    bool upsert_ok,
+    const std::string & assigned_id,
+    const std::string & reason) const;
   void recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms);
   void initializeSeededWorld(const cbpwm::WorldModelConfig & startup);
   void syncCallback(
@@ -319,6 +336,8 @@ private:
   RuntimeConfig runtime_cfg_;
   std::atomic<bool> debug_detection_overlay_enabled_{true};
   std::atomic<bool> debug_refine_grasped_roi_input_enabled_{true};
+  bool debug_scene_discovery_dump_enabled_{false};
+  std::filesystem::path debug_scene_discovery_dump_dir_{"scene_discovery_dump"};
   bool perf_log_timing_enabled_{true};
   int perf_log_every_n_frames_{20};
   uint64_t world_block_counter_{0};

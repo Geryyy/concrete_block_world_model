@@ -33,6 +33,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     coarse_front_center_offset_rect_m_ = startup.coarse_front_center_offset_rect_m;
     debug_detection_overlay_enabled_ = startup.debug_detection_overlay_enabled;
     debug_refine_grasped_roi_input_enabled_ = startup.debug_refine_grasped_roi_input_enabled;
+    debug_scene_discovery_dump_enabled_ = startup.debug_scene_discovery_dump_enabled;
+    debug_scene_discovery_dump_dir_ = startup.debug_scene_discovery_dump_dir;
     task_move_fk_tracking_enabled_ = startup.task_move_fk_tracking_enabled;
     perf_log_timing_enabled_ = startup.perf_log_timing_enabled;
     perf_log_every_n_frames_ = startup.perf_log_every_n_frames;
