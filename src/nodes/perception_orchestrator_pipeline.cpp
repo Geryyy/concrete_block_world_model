@@ -16,6 +16,8 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2/time.h>
 
 namespace
 {
@@ -132,6 +134,70 @@ bool writeCloudPcd(
     RCLCPP_WARN(logger, "Scene-discovery dump: failed to write cloud: %s", exc.what());
     return false;
   }
+}
+
+// Frame ids may contain '/' (e.g. "elastic/K8_tool_center_point"); sanitize for the
+// cosmetic "T_parent_child" name field so the YAML key stays readable.
+std::string frameToken(const std::string & frame)
+{
+  std::string out;
+  out.reserve(frame.size());
+  for (const char c : frame) {
+    out.push_back((c == '/' || c == ' ') ? '_' : c);
+  }
+  return out;
+}
+
+// URDF/tf convention: R = Rz(yaw) * Ry(pitch) * Rx(roll). Returns [roll, pitch, yaw].
+std::array<double, 3> rpyFromRotation(const Eigen::Matrix3d & rot)
+{
+  const double pitch = std::asin(std::clamp(-rot(2, 0), -1.0, 1.0));
+  const double roll = std::atan2(rot(2, 1), rot(2, 2));
+  const double yaw = std::atan2(rot(1, 0), rot(0, 0));
+  return {roll, pitch, yaw};
+}
+
+void writeTfEntry(
+  std::ostream & out,
+  const std::string & parent,
+  const std::string & child,
+  const std::string & lookup,
+  bool available,
+  const std::string & reason,
+  const geometry_msgs::msg::Transform & tf)
+{
+  out << "  - name: \"T_" << frameToken(parent) << "_" << frameToken(child) << "\"\n";
+  out << "    parent: \"" << yamlEscape(parent) << "\"\n";
+  out << "    child: \"" << yamlEscape(child) << "\"\n";
+  out << "    lookup: \"" << lookup << "\"\n";
+  out << "    available: " << (available ? "true" : "false") << "\n";
+  if (!available) {
+    out << "    reason: \"" << yamlEscape(reason) << "\"\n";
+    return;
+  }
+  if (!reason.empty()) {
+    out << "    note: \"" << yamlEscape(reason) << "\"\n";
+  }
+
+  const auto & t = tf.translation;
+  const auto & q = tf.rotation;
+  const Eigen::Quaterniond quat = Eigen::Quaterniond(q.w, q.x, q.y, q.z).normalized();
+  const Eigen::Matrix3d rot = quat.toRotationMatrix();
+  const auto rpy = rpyFromRotation(rot);
+  const std::array<double, 3> trans{t.x, t.y, t.z};
+
+  std::ostringstream body;
+  body << std::setprecision(9);
+  body << "    xyz: [" << t.x << ", " << t.y << ", " << t.z << "]\n";
+  body << "    rpy: [" << rpy[0] << ", " << rpy[1] << ", " << rpy[2] << "]\n";
+  body << "    quaternion_xyzw: [" << q.x << ", " << q.y << ", " << q.z << ", " << q.w << "]\n";
+  body << "    matrix:\n";
+  for (int r = 0; r < 3; ++r) {
+    body << "      - [" << rot(r, 0) << ", " << rot(r, 1) << ", " << rot(r, 2) << ", "
+         << trans[static_cast<size_t>(r)] << "]\n";
+  }
+  body << "      - [0.0, 0.0, 0.0, 1.0]\n";
+  out << body.str();
 }
 
 }  // namespace
@@ -394,8 +460,126 @@ std::filesystem::path PerceptionOrchestratorNode::createSceneDiscoveryDump(
     }
   }
 
+  writeSceneDiscoveryTfSnapshot(dump_dir, image, cloud);
+
   RCLCPP_INFO(get_logger(), "Scene-discovery dump started: %s", dump_dir.c_str());
   return dump_dir;
+}
+
+bool PerceptionOrchestratorNode::lookupDumpTransform(
+  const std::string & parent,
+  const std::string & child,
+  const builtin_interfaces::msg::Time & stamp,
+  geometry_msgs::msg::TransformStamped & out,
+  std::string & lookup,
+  std::string & reason)
+{
+  if (parent == child) {
+    out = geometry_msgs::msg::TransformStamped();
+    out.header.frame_id = parent;
+    out.child_frame_id = child;
+    out.transform.rotation.w = 1.0;
+    lookup = "identity";
+    return true;
+  }
+  if (!tf_buffer_) {
+    reason = "TF buffer unavailable";
+    return false;
+  }
+  try {
+    out = tf_buffer_->lookupTransform(parent, child, stamp, tf2::durationFromSec(0.1));
+    lookup = "stamp";
+    return true;
+  } catch (const tf2::TransformException & ex_stamp) {
+    try {
+      out = tf_buffer_->lookupTransform(parent, child, tf2::TimePointZero);
+      lookup = "latest";
+      reason = std::string("stamp lookup failed, used latest available: ") + ex_stamp.what();
+      return true;
+    } catch (const tf2::TransformException & ex_latest) {
+      reason = ex_latest.what();
+      return false;
+    }
+  }
+}
+
+void PerceptionOrchestratorNode::writeSceneDiscoveryTfSnapshot(
+  const std::filesystem::path & dump_dir,
+  const sensor_msgs::msg::Image & image,
+  const sensor_msgs::msg::PointCloud2 & cloud)
+{
+  if (dump_dir.empty()) {
+    return;
+  }
+
+  std::ofstream out(dump_dir / "tf.yaml");
+  if (!out.is_open()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery dump: failed to write tf.yaml in %s",
+      dump_dir.c_str());
+    return;
+  }
+
+  const std::string image_frame = image.header.frame_id;
+  const std::string cloud_frame = cloud.header.frame_id;
+
+  out << "# TF snapshot for this scene-discovery dump.\n";
+  out << "# Convention: T_parent_child maps points from child coords into parent coords\n";
+  out << "#   (p_parent = T_parent_child * p_child).\n";
+  out << "# lookup: \"stamp\" = at the cloud stamp, \"latest\" = newest available (see note),\n";
+  out << "#   \"identity\" = parent == child.\n";
+  out << "# rgb.png is in image_frame, cloud.pcd is in cloud_frame, block poses are in"
+      << " reference_frame.\n";
+  out << "reference_frame: \"" << yamlEscape(world_frame_) << "\"\n";
+  out << "stamp:\n";
+  out << "  sec: " << cloud.header.stamp.sec << "\n";
+  out << "  nanosec: " << cloud.header.stamp.nanosec << "\n";
+  out << "image_frame: \"" << yamlEscape(image_frame) << "\"\n";
+  out << "cloud_frame: \"" << yamlEscape(cloud_frame) << "\"\n";
+  out << "transforms:\n";
+
+  std::vector<std::pair<std::string, std::string>> pairs;
+  std::unordered_set<std::string> seen;
+  const auto add_pair =
+    [&pairs, &seen](const std::string & parent, const std::string & child) {
+      if (parent.empty() || child.empty()) {
+        return;
+      }
+      if (seen.insert(parent + '\n' + child).second) {
+        pairs.emplace_back(parent, child);
+      }
+    };
+
+  // world <- sensor frames of the exported rgb.png / cloud.pcd.
+  add_pair(world_frame_, image_frame);
+  add_pair(world_frame_, cloud_frame);
+  // Direct camera -> lidar extrinsic for projecting rgb.png onto cloud.pcd.
+  add_pair(cloud_frame, image_frame);
+  // world <- extra bodies of interest (e.g. crane base K0_mounting_base).
+  for (const auto & frame : debug_scene_discovery_dump_tf_frames_) {
+    add_pair(world_frame_, frame);
+  }
+
+  size_t resolved = 0;
+  for (const auto & pair : pairs) {
+    geometry_msgs::msg::TransformStamped tf;
+    std::string lookup;
+    std::string reason;
+    const bool ok =
+      lookupDumpTransform(pair.first, pair.second, cloud.header.stamp, tf, lookup, reason);
+    if (ok) {
+      ++resolved;
+    }
+    writeTfEntry(out, pair.first, pair.second, lookup, ok, reason, tf.transform);
+  }
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Scene-discovery dump: wrote tf.yaml (%zu/%zu transforms resolved) in %s",
+    resolved,
+    pairs.size(),
+    dump_dir.c_str());
 }
 
 void PerceptionOrchestratorNode::writeSceneDiscoveryDumpSummary(

@@ -35,6 +35,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     debug_refine_grasped_roi_input_enabled_ = startup.debug_refine_grasped_roi_input_enabled;
     debug_scene_discovery_dump_enabled_ = startup.debug_scene_discovery_dump_enabled;
     debug_scene_discovery_dump_dir_ = startup.debug_scene_discovery_dump_dir;
+    debug_scene_discovery_dump_tf_frames_ = startup.debug_scene_discovery_dump_tf_frames;
     task_move_fk_tracking_enabled_ = startup.task_move_fk_tracking_enabled;
     perf_log_timing_enabled_ = startup.perf_log_timing_enabled;
     perf_log_every_n_frames_ = startup.perf_log_every_n_frames;

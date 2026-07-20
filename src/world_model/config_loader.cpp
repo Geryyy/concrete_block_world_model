@@ -358,6 +358,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<bool>("debug.scene_discovery_dump.enable", false);
   cfg.debug_scene_discovery_dump_dir =
     node.declare_parameter<std::string>("debug.scene_discovery_dump.dir", "scene_discovery_dump");
+  cfg.debug_scene_discovery_dump_tf_frames =
+    node.declare_parameter<std::vector<std::string>>(
+    "debug.scene_discovery_dump.tf_frames", std::vector<std::string>{"K0_mounting_base"});
   cfg.perf_log_timing_enabled = node.declare_parameter<bool>("perf.log_timing", true);
   cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 100);
   cfg.marker_refresh_period_s = node.declare_parameter<double>(

@@ -116,11 +116,15 @@ world_model_node:
       # Publish image overlays with detections and masks.
       publish_detection_overlay: true
       # Dump scene-discovery datasets for standalone development.
-      # One folder per one-shot frame: rgb.png, cloud.pcd, masks, metadata.yaml,
-      # and registrations.yaml.
+      # One folder per one-shot frame: rgb.png (image_frame), cloud.pcd (cloud_frame),
+      # masks, metadata.yaml, registrations.yaml (block poses in world_frame), and
+      # tf.yaml (world<-image, world<-cloud, cloud<-image, and world<-each tf_frames
+      # entry, captured at the cloud stamp so each folder is self-contained).
       scene_discovery_dump:
         enable: true
         dir: scene_discovery_dump
+        # Extra frames snapshotted as T_world_<frame> in tf.yaml (e.g. the crane base).
+        tf_frames: ["K0_mounting_base"]
 
     perf:
       # Emit periodic perception timing logs and timing topics.

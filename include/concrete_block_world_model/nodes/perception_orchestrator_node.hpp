@@ -25,7 +25,9 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -266,6 +268,23 @@ private:
     const std::filesystem::path & dump_dir,
     const std::vector<std::string> & registration_records,
     const cbpwm::RegistrationCounters & counters);
+  // Snapshot the TF transforms needed to relate the dumped rgb.png (image frame),
+  // cloud.pcd (cloud frame), and world-frame block poses, plus any extra bodies of
+  // interest (default: the crane base K0_mounting_base), into a self-contained tf.yaml.
+  void writeSceneDiscoveryTfSnapshot(
+    const std::filesystem::path & dump_dir,
+    const sensor_msgs::msg::Image & image,
+    const sensor_msgs::msg::PointCloud2 & cloud);
+  // Look up T_parent_child at the given stamp, falling back to the latest available
+  // transform (lookup="latest") when the stamped lookup fails. parent == child yields
+  // identity. Returns false only when no transform could be resolved at all.
+  bool lookupDumpTransform(
+    const std::string & parent,
+    const std::string & child,
+    const builtin_interfaces::msg::Time & stamp,
+    geometry_msgs::msg::TransformStamped & out,
+    std::string & lookup,
+    std::string & reason);
   std::string formatSceneDiscoveryDumpRecord(
     uint32_t detection_id,
     bool registration_ok,
@@ -338,6 +357,8 @@ private:
   std::atomic<bool> debug_refine_grasped_roi_input_enabled_{true};
   bool debug_scene_discovery_dump_enabled_{false};
   std::filesystem::path debug_scene_discovery_dump_dir_{"scene_discovery_dump"};
+  // Extra frames snapshotted as T_world_<frame> in each dump's tf.yaml.
+  std::vector<std::string> debug_scene_discovery_dump_tf_frames_{"K0_mounting_base"};
   bool perf_log_timing_enabled_{true};
   int perf_log_every_n_frames_{20};
   uint64_t world_block_counter_{0};

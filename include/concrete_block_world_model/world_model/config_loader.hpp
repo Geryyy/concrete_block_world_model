@@ -55,6 +55,7 @@ struct WorldModelConfig
   bool debug_refine_grasped_roi_input_enabled{true};
   bool debug_scene_discovery_dump_enabled{false};
   std::string debug_scene_discovery_dump_dir{"scene_discovery_dump"};
+  std::vector<std::string> debug_scene_discovery_dump_tf_frames{"K0_mounting_base"};
   bool perf_log_timing_enabled{true};
   int perf_log_every_n_frames{20};
   double marker_refresh_period_s{0.5};
