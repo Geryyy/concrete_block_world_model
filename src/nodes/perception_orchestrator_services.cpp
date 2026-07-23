@@ -264,17 +264,34 @@ std::filesystem::path PerceptionOrchestratorNode::captureDetectorSceneDiscovery(
     }
   }
 
-  // Valid Blockpose schema-v2 starter. It intentionally contains no ground truth:
-  // an operator must set the reviewed ROI and approve visible blocks before marking
-  // the snapshot complete.
+  // Valid Blockpose schema-v2 starter. Raw detector candidates are represented
+  // as pending priors so the annotator shows the exact poses the operator is
+  // reviewing. They remain non-GT until explicitly approved; a rejected prior
+  // captures a concrete false-positive decision rather than silently deleting it.
   std::ofstream annotations(capture_dir / "annotations.yaml");
   if (annotations.is_open()) {
     annotations << "schema_version: 2\n"
                 << "snapshot: \"" << yamlEscape(capture_dir.filename().string()) << "\"\n"
                 << "annotation_complete: false\n"
-                << "blocks: []\n"
-                << "unmatched_detection_reviews: {}\n"
-                << "notes: \"Raw detector candidates are in detector_candidates.yaml.\"\n";
+                << "blocks:\n";
+    for (std::size_t index = 0; index < detector_response.blocks.blocks.size(); ++index) {
+      const auto & block = detector_response.blocks.blocks[index];
+      annotations << "  - id: \"" << captureCandidateId(index) << "\"\n"
+                  << "    provenance: direct_detector_scene_discovery\n"
+                  << "    review_status: pending\n"
+                  << "    visibility: unknown\n"
+                  << "    confidence: " << block.confidence << "\n"
+                  << "    dimensions: [" << block_dimensions_m_[0] << ", " << block_dimensions_m_[1]
+                  << ", " << block_dimensions_m_[2] << "]\n"
+                  << "    pose:\n"
+                  << "      position: [" << block.pose.position.x << ", " << block.pose.position.y
+                  << ", " << block.pose.position.z << "]\n"
+                  << "      orientation_xyzw: [" << block.pose.orientation.x << ", "
+                  << block.pose.orientation.y << ", " << block.pose.orientation.z << ", "
+                  << block.pose.orientation.w << "]\n";
+    }
+    annotations << "unmatched_detection_reviews: {}\n"
+                << "notes: \"Pending priors are raw detector candidates; approve only visible blocks.\"\n";
   }
   RCLCPP_INFO(get_logger(), "Scene-discovery capture saved: %s", capture_dir.c_str());
   return capture_dir;
