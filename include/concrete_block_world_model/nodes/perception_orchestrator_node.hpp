@@ -401,6 +401,7 @@ private:
   CameraIntrinsics camera_intrinsics_;
   std::string camera_info_frame_id_;
   builtin_interfaces::msg::Time camera_info_stamp_;
+  std::deque<sensor_msgs::msg::CameraInfo::SharedPtr> scene_discovery_camera_infos_;
   std::mutex scene_discovery_image_mutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> scene_discovery_images_;
   bool scene_discovery_overlay_enabled_{true};

@@ -94,40 +94,52 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
     return;
   }
 
-  CameraIntrinsics intrinsics;
-  std::string camera_info_frame_id;
-  builtin_interfaces::msg::Time camera_info_stamp;
+  sensor_msgs::msg::CameraInfo::SharedPtr camera_info;
+  int64_t best_camera_info_delta_ns = std::numeric_limits<int64_t>::max();
   {
     std::lock_guard<std::mutex> lock(camera_info_mutex_);
-    intrinsics = camera_intrinsics_;
-    camera_info_frame_id = camera_info_frame_id_;
-    camera_info_stamp = camera_info_stamp_;
+    const int64_t image_stamp_ns = stampNanoseconds(image->header.stamp);
+    for (const auto & candidate : scene_discovery_camera_infos_) {
+      const int64_t delta_ns = std::llabs(
+        stampNanoseconds(candidate->header.stamp) - image_stamp_ns);
+      if (delta_ns < best_camera_info_delta_ns) {
+        best_camera_info_delta_ns = delta_ns;
+        camera_info = candidate;
+      }
+    }
   }
-  if (!intrinsics.valid) {
-    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: no valid camera intrinsics.");
+  if (!camera_info) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: no cached CameraInfo.");
     return;
   }
-  if (camera_info_frame_id != image->header.frame_id) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Scene-discovery pose overlay skipped: CameraInfo frame '%s' does not match image frame '%s'.",
-      camera_info_frame_id.c_str(), image->header.frame_id.c_str());
-    return;
-  }
-  if (intrinsics.width != image->width || intrinsics.height != image->height) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Scene-discovery pose overlay skipped: CameraInfo dimensions %ux%u do not match image %ux%u.",
-      intrinsics.width, intrinsics.height, image->width, image->height);
-    return;
-  }
-  const int64_t camera_info_delta_ns = std::llabs(
-    stampNanoseconds(camera_info_stamp) - stampNanoseconds(image->header.stamp));
-  if (camera_info_delta_ns > max_delta_ns) {
+  if (best_camera_info_delta_ns > max_delta_ns) {
     RCLCPP_WARN(
       get_logger(),
       "Scene-discovery pose overlay skipped: CameraInfo is %.3f s from selected image.",
-      static_cast<double>(camera_info_delta_ns) * 1e-9);
+      static_cast<double>(best_camera_info_delta_ns) * 1e-9);
+    return;
+  }
+  if (camera_info->header.frame_id != image->header.frame_id) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: CameraInfo frame '%s' does not match image frame '%s'.",
+      camera_info->header.frame_id.c_str(), image->header.frame_id.c_str());
+    return;
+  }
+  if (camera_info->width != image->width || camera_info->height != image->height) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: CameraInfo dimensions %ux%u do not match image %ux%u.",
+      camera_info->width, camera_info->height, image->width, image->height);
+    return;
+  }
+  CameraIntrinsics intrinsics;
+  intrinsics.projection_fx = camera_info->p[0];
+  intrinsics.projection_fy = camera_info->p[5];
+  intrinsics.projection_cx = camera_info->p[2];
+  intrinsics.projection_cy = camera_info->p[6];
+  if (intrinsics.projection_fx <= 0.0 || intrinsics.projection_fy <= 0.0) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: invalid CameraInfo projection matrix.");
     return;
   }
 

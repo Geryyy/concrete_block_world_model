@@ -46,6 +46,11 @@ void PerceptionOrchestratorNode::cameraInfoCallback(const sensor_msgs::msg::Came
     camera_intrinsics_ = intr;
     camera_info_frame_id_ = msg->header.frame_id;
     camera_info_stamp_ = msg->header.stamp;
+    scene_discovery_camera_infos_.push_back(msg);
+    constexpr std::size_t kCameraInfoCacheCapacity = 30U;
+    while (scene_discovery_camera_infos_.size() > kCameraInfoCacheCapacity) {
+      scene_discovery_camera_infos_.pop_front();
+    }
   }
 
 bool PerceptionOrchestratorNode::lookupPredictedGraspedPose(
