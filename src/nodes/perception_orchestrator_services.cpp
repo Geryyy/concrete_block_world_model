@@ -1,9 +1,232 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
+#include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
+#include <array>
+#include <cmath>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 #include <unordered_set>
+
+#include <opencv2/imgproc.hpp>
+
+namespace
+{
+
+int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
+{
+  return static_cast<int64_t>(stamp.sec) * 1000000000LL +
+    static_cast<int64_t>(stamp.nanosec);
+}
+
+bool projectPoint(
+  const Eigen::Vector3d & point_camera,
+  double fx,
+  double fy,
+  double cx,
+  double cy,
+  cv::Point & pixel)
+{
+  constexpr double kMinDepthM = 1e-3;
+  if (!point_camera.allFinite() || point_camera.z() <= kMinDepthM) {
+    return false;
+  }
+  const double u = fx * point_camera.x() / point_camera.z() + cx;
+  const double v = fy * point_camera.y() / point_camera.z() + cy;
+  constexpr double kMaxPixelMagnitude = 1e6;
+  if (!std::isfinite(u) || !std::isfinite(v) ||
+    std::abs(u) > kMaxPixelMagnitude || std::abs(v) > kMaxPixelMagnitude)
+  {
+    return false;
+  }
+  pixel = cv::Point(static_cast<int>(std::lround(u)), static_cast<int>(std::lround(v)));
+  return true;
+}
+
+}  // namespace
+
+void PerceptionOrchestratorNode::cacheSceneDiscoveryImage(
+  const sensor_msgs::msg::Image::ConstSharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(scene_discovery_image_mutex_);
+  scene_discovery_images_.push_back(std::move(msg));
+  constexpr std::size_t kImageCacheCapacity = 30U;
+  while (scene_discovery_images_.size() > kImageCacheCapacity) {
+    scene_discovery_images_.pop_front();
+  }
+}
+
+void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
+  const std_msgs::msg::Header & cloud_header,
+  const std::vector<Block> & blocks)
+{
+  if (!scene_discovery_pose_overlay_pub_ || blocks.empty()) {
+    return;
+  }
+
+  sensor_msgs::msg::Image::ConstSharedPtr image;
+  const int64_t cloud_stamp_ns = stampNanoseconds(cloud_header.stamp);
+  int64_t best_delta_ns = std::numeric_limits<int64_t>::max();
+  {
+    std::lock_guard<std::mutex> lock(scene_discovery_image_mutex_);
+    for (const auto & candidate : scene_discovery_images_) {
+      const int64_t delta_ns = std::llabs(stampNanoseconds(candidate->header.stamp) - cloud_stamp_ns);
+      if (delta_ns < best_delta_ns) {
+        best_delta_ns = delta_ns;
+        image = candidate;
+      }
+    }
+  }
+  const int64_t max_delta_ns = static_cast<int64_t>(
+    std::llround(scene_discovery_overlay_max_image_delta_s_ * 1e9));
+  if (!image || best_delta_ns > max_delta_ns) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: no Blackfly image within %.3f s of cloud stamp.",
+      scene_discovery_overlay_max_image_delta_s_);
+    return;
+  }
+  if (image->header.frame_id.empty()) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: Blackfly image has no frame_id.");
+    return;
+  }
+
+  CameraIntrinsics intrinsics;
+  std::string camera_info_frame_id;
+  builtin_interfaces::msg::Time camera_info_stamp;
+  {
+    std::lock_guard<std::mutex> lock(camera_info_mutex_);
+    intrinsics = camera_intrinsics_;
+    camera_info_frame_id = camera_info_frame_id_;
+    camera_info_stamp = camera_info_stamp_;
+  }
+  if (!intrinsics.valid) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: no valid camera intrinsics.");
+    return;
+  }
+  if (camera_info_frame_id != image->header.frame_id) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: CameraInfo frame '%s' does not match image frame '%s'.",
+      camera_info_frame_id.c_str(), image->header.frame_id.c_str());
+    return;
+  }
+  if (intrinsics.width != image->width || intrinsics.height != image->height) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: CameraInfo dimensions %ux%u do not match image %ux%u.",
+      intrinsics.width, intrinsics.height, image->width, image->height);
+    return;
+  }
+  const int64_t camera_info_delta_ns = std::llabs(
+    stampNanoseconds(camera_info_stamp) - stampNanoseconds(image->header.stamp));
+  if (camera_info_delta_ns > max_delta_ns) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay skipped: CameraInfo is %.3f s from selected image.",
+      static_cast<double>(camera_info_delta_ns) * 1e-9);
+    return;
+  }
+
+  Eigen::Matrix4d T_camera_world = Eigen::Matrix4d::Identity();
+  try {
+    const auto tf_camera_world = tf_buffer_->lookupTransform(
+      image->header.frame_id,
+      world_frame_,
+      rclcpp::Time(image->header.stamp),
+      rclcpp::Duration::from_seconds(0.2));
+    T_camera_world = transformToEigen(tf_camera_world);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      get_logger(), "Scene-discovery pose overlay skipped: camera<-world TF failed: %s", ex.what());
+    return;
+  }
+
+  cv::Mat output;
+  try {
+    output = toCvBgr(*image);
+  } catch (const std::exception & ex) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: image conversion failed: %s", ex.what());
+    return;
+  }
+
+  constexpr std::array<std::array<int, 2>, 12> kEdges{{
+    {{0, 1}}, {{0, 2}}, {{0, 4}}, {{1, 3}}, {{1, 5}}, {{2, 3}},
+    {{2, 6}}, {{3, 7}}, {{4, 5}}, {{4, 6}}, {{5, 7}}, {{6, 7}}
+  }};
+  const Eigen::Vector3d half_dimensions(
+    block_dimensions_m_[0] / 2.0,
+    block_dimensions_m_[1] / 2.0,
+    block_dimensions_m_[2] / 2.0);
+  for (const auto & block : blocks) {
+    const Eigen::Quaterniond q_world_block(
+      block.pose.orientation.w,
+      block.pose.orientation.x,
+      block.pose.orientation.y,
+      block.pose.orientation.z);
+    if (!q_world_block.coeffs().allFinite() || q_world_block.norm() < 1e-8 ||
+      !std::isfinite(block.pose.position.x) || !std::isfinite(block.pose.position.y) ||
+      !std::isfinite(block.pose.position.z))
+    {
+      RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped a block with an invalid pose.");
+      continue;
+    }
+    const Eigen::Matrix3d R_world_block = q_world_block.normalized().toRotationMatrix();
+    const Eigen::Vector3d p_world(
+      block.pose.position.x,
+      block.pose.position.y,
+      block.pose.position.z);
+    std::array<cv::Point, 8> pixels;
+    std::array<bool, 8> visible{};
+    for (int corner = 0; corner < 8; ++corner) {
+      const Eigen::Vector3d local(
+        (corner & 1) == 0 ? -half_dimensions.x() : half_dimensions.x(),
+        (corner & 2) == 0 ? -half_dimensions.y() : half_dimensions.y(),
+        (corner & 4) == 0 ? -half_dimensions.z() : half_dimensions.z());
+      const Eigen::Vector3d corner_world = p_world + R_world_block * local;
+      const Eigen::Vector4d p_world_h(
+        corner_world.x(), corner_world.y(), corner_world.z(), 1.0);
+      visible[corner] = projectPoint(
+        (T_camera_world * p_world_h).head<3>(),
+        intrinsics.projection_fx,
+        intrinsics.projection_fy,
+        intrinsics.projection_cx,
+        intrinsics.projection_cy,
+        pixels[corner]);
+    }
+    const cv::Scalar black(0, 0, 0);
+    const cv::Scalar cyan(0, 255, 255);
+    for (const auto & edge : kEdges) {
+      if (visible[edge[0]] && visible[edge[1]]) {
+        cv::line(output, pixels[edge[0]], pixels[edge[1]], black, 4, cv::LINE_AA);
+        cv::line(output, pixels[edge[0]], pixels[edge[1]], cyan, 2, cv::LINE_AA);
+      }
+    }
+    const Eigen::Vector4d center_world_h(p_world.x(), p_world.y(), p_world.z(), 1.0);
+    cv::Point center_pixel;
+    if (projectPoint(
+        (T_camera_world * center_world_h).head<3>(),
+        intrinsics.projection_fx,
+        intrinsics.projection_fy,
+        intrinsics.projection_cx,
+        intrinsics.projection_cy,
+        center_pixel)) {
+      std::ostringstream label;
+      label << (block.id.empty() ? "detected_block" : block.id)
+            << " coarse score=" << std::fixed << std::setprecision(2) << block.confidence
+            << " dt=" << std::setprecision(3) << static_cast<double>(best_delta_ns) * 1e-9 << "s";
+      cv::putText(output, label.str(), center_pixel + cv::Point(8, -8),
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, black, 3, cv::LINE_AA);
+      cv::putText(output, label.str(), center_pixel + cv::Point(8, -8),
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, cyan, 1, cv::LINE_AA);
+    }
+  }
+  scene_discovery_pose_overlay_pub_->publish(
+    *cv_bridge::CvImage(image->header, "bgr8", output).toImageMsg());
+}
 
 void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
   {
@@ -62,6 +285,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
     }
     std::size_t accepted = 0;
     std::size_t rejected = 0;
+    std::vector<Block> accepted_blocks;
     {
       // Associate every detector observation against the same pre-discovery
       // snapshot.  Inserting each observation immediately would let later
@@ -100,6 +324,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
             claimed_existing_ids.insert(assigned_id);
           }
           pending_updates.emplace_back(assigned_id, std::move(candidate_world.at(assigned_id)));
+          accepted_blocks.push_back(pending_updates.back().second);
           ++accepted;
         } else {
           ++rejected;
@@ -111,6 +336,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
       }
     }
     publishPersistentWorld(header);
+    publishSceneDiscoveryPoseOverlay(header, accepted_blocks);
     response.blocks = latestWorldSnapshot();
     response.success = true;
     response.message = "Detector scene discovery: " + std::to_string(accepted) +

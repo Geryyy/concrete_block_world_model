@@ -64,6 +64,10 @@ def generate_launch_description():
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("block_goal_markers", "/cbp/block_goal_markers"),
                     ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
+                    (
+                        "debug/scene_discovery_pose_overlay",
+                        "/cbp/debug/scene_discovery_pose_overlay",
+                    ),
                     ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
                     ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
                     ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),

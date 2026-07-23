@@ -29,6 +29,16 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
     detector_discover_service_ = declare_parameter<std::string>(
       "scene_discovery.detector_service", "/concrete_block_detector/discover_blocks");
+    scene_discovery_overlay_enabled_ = declare_parameter<bool>(
+      "scene_discovery.overlay.enabled", true);
+    scene_discovery_overlay_max_image_delta_s_ = declare_parameter<double>(
+      "scene_discovery.overlay.max_image_delta_s", 0.06);
+    if (scene_discovery_overlay_max_image_delta_s_ <= 0.0) {
+      RCLCPP_WARN(
+        get_logger(),
+        "scene_discovery.overlay.max_image_delta_s must be positive; using 0.06 s");
+      scene_discovery_overlay_max_image_delta_s_ = 0.06;
+    }
     scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
     scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;
     scene_discovery_merge_iou_threshold_ = startup.scene_discovery_merge_iou_threshold;
@@ -102,6 +112,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         "debug/detection_overlay", debug_image_qos);
       yolo_service_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
         "debug/yolo_service_debug_image", debug_image_qos);
+    }
+    if (scene_discovery_overlay_enabled_) {
+      const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+      scene_discovery_pose_overlay_pub_ = create_publisher<sensor_msgs::msg::Image>(
+        "debug/scene_discovery_pose_overlay", debug_image_qos);
     }
     if (debug_refine_grasped_roi_input_enabled_.load()) {
       const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
@@ -183,6 +198,15 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "block_goal_markers", marker_qos);
 
     image_sub_.subscribe(this, "image");
+    if (scene_discovery_overlay_enabled_) {
+      scene_discovery_image_sub_ = create_subscription<sensor_msgs::msg::Image>(
+        "image",
+        rclcpp::SensorDataQoS(),
+        std::bind(
+          &PerceptionOrchestratorNode::cacheSceneDiscoveryImage,
+          this,
+          std::placeholders::_1));
+    }
     cloud_sub_.subscribe(this, "points");
     sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
       SyncPolicy(10), image_sub_, cloud_sub_);

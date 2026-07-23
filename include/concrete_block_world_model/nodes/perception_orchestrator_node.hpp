@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <future>
 #include <limits>
@@ -99,6 +100,10 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     double fy{0.0};
     double cx{0.0};
     double cy{0.0};
+    double projection_fx{0.0};
+    double projection_fy{0.0};
+    double projection_cx{0.0};
+    double projection_cy{0.0};
     uint32_t width{0};
     uint32_t height{0};
   };
@@ -227,6 +232,10 @@ private:
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response);
   bool runDetectorSceneDiscovery(double timeout_s, RunPoseSrv::Response & response);
+  void cacheSceneDiscoveryImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
+  void publishSceneDiscoveryPoseOverlay(
+    const std_msgs::msg::Header & cloud_header,
+    const std::vector<Block> & blocks);
   void handleGetCoarseBlocks(
     const std::shared_ptr<GetCoarseSrv::Request> request,
     std::shared_ptr<GetCoarseSrv::Response> response);
@@ -316,6 +325,7 @@ private:
   message_filters::Subscriber<sensor_msgs::msg::PointCloud2> cloud_sub_;
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr scene_discovery_image_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
@@ -340,6 +350,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr refine_grasped_roi_input_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr scene_discovery_pose_overlay_pub_;
 
   std::unordered_map<std::string, Block> persistent_world_;
   std::mutex persistent_world_mutex_;
@@ -389,6 +400,11 @@ private:
   std::mutex camera_info_mutex_;
   CameraIntrinsics camera_intrinsics_;
   std::string camera_info_frame_id_;
+  builtin_interfaces::msg::Time camera_info_stamp_;
+  std::mutex scene_discovery_image_mutex_;
+  std::deque<sensor_msgs::msg::Image::ConstSharedPtr> scene_discovery_images_;
+  bool scene_discovery_overlay_enabled_{true};
+  double scene_discovery_overlay_max_image_delta_s_{0.06};
   bool refine_grasped_use_fk_roi_{true};
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};

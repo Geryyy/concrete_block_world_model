@@ -28,9 +28,16 @@ void PerceptionOrchestratorNode::cameraInfoCallback(const sensor_msgs::msg::Came
     intr.fy = msg->k[4];
     intr.cx = msg->k[2];
     intr.cy = msg->k[5];
+    // This node consumes the rectified Blackfly image.  P is its calibrated
+    // pinhole projection; keep K too because the existing ROI path uses it.
+    intr.projection_fx = msg->p[0];
+    intr.projection_fy = msg->p[5];
+    intr.projection_cx = msg->p[2];
+    intr.projection_cy = msg->p[6];
     intr.width = msg->width;
     intr.height = msg->height;
-    intr.valid = intr.fx > 0.0 && intr.fy > 0.0;
+    intr.valid = intr.fx > 0.0 && intr.fy > 0.0 &&
+      intr.projection_fx > 0.0 && intr.projection_fy > 0.0;
 
     if (!intr.valid) {
       return;
@@ -38,6 +45,7 @@ void PerceptionOrchestratorNode::cameraInfoCallback(const sensor_msgs::msg::Came
     std::lock_guard<std::mutex> lock(camera_info_mutex_);
     camera_intrinsics_ = intr;
     camera_info_frame_id_ = msg->header.frame_id;
+    camera_info_stamp_ = msg->header.stamp;
   }
 
 bool PerceptionOrchestratorNode::lookupPredictedGraspedPose(
