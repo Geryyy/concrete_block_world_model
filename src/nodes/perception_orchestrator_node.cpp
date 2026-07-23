@@ -23,6 +23,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     runtime_cfg_.association_max_age_s = startup.association_max_age_s;
     runtime_cfg_.min_update_confidence = startup.min_update_confidence;
     runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
+    detector_discover_service_ = declare_parameter<std::string>(
+      "scene_discovery.detector_service", "/concrete_block_detector/discover_blocks");
     scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
     scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;
     scene_discovery_merge_iou_threshold_ = startup.scene_discovery_merge_iou_threshold;
@@ -197,6 +199,8 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "/extract_mask_cutout",
       rmw_qos_profile_services_default,
       action_client_cb_group_);
+    discover_blocks_client_ = create_client<DiscoverBlocksSrv>(
+      detector_discover_service_, rmw_qos_profile_services_default, action_client_cb_group_);
     action_client_ = rclcpp_action::create_client<RegisterBlock>(
       this, "register_block", action_client_cb_group_);
 

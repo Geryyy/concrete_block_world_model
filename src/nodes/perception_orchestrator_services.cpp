@@ -18,6 +18,81 @@ void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool 
     one_shot_cv_.notify_all();
   }
 
+bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
+    double timeout_s, RunPoseSrv::Response & response)
+  {
+    const auto service_wait = std::chrono::duration<double>(std::min(timeout_s, 1.0));
+    if (!discover_blocks_client_->wait_for_service(service_wait)) {
+      response.success = false;
+      response.message = "Detector discovery service '" + detector_discover_service_ + "' is unavailable.";
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+
+    auto request = std::make_shared<DiscoverBlocksSrv::Request>();
+    request->timeout_s = static_cast<float>(timeout_s);
+    auto future = discover_blocks_client_->async_send_request(request);
+    if (future.wait_for(std::chrono::duration<double>(timeout_s)) != std::future_status::ready) {
+      response.success = false;
+      response.message = "Timed out waiting for detector scene discovery.";
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+
+    DiscoverBlocksSrv::Response::SharedPtr detector_response;
+    try {
+      detector_response = future.get();
+    } catch (const std::exception & error) {
+      response.success = false;
+      response.message = std::string("Detector scene discovery transport failed: ") + error.what();
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+    if (!detector_response->success) {
+      response.success = false;
+      response.message = "Detector scene discovery failed: " + detector_response->message;
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+
+    std_msgs::msg::Header header = detector_response->blocks.header;
+    header.frame_id = world_frame_;
+    if (header.stamp.sec == 0 && header.stamp.nanosec == 0U) {
+      header.stamp = now();
+    }
+    std::size_t accepted = 0;
+    std::size_t rejected = 0;
+    {
+      // Discovery is one world-model transaction: association observes a stable
+      // snapshot and no partially associated detector result is published.
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      for (auto incoming : detector_response->blocks.blocks) {
+        incoming.id.clear();
+        incoming.pose_status = Block::POSE_COARSE;
+        incoming.task_status = Block::TASK_FREE;
+        incoming.last_seen = header.stamp;
+        std::string assigned_id;
+        std::string reason;
+        if (cbpwm::upsertRegisteredBlock(
+            persistent_world_, world_block_counter_, incoming,
+            cbpwm::OneShotMode::kSceneDiscovery, "", header, *get_clock(),
+            associationConfig(), assigned_id, reason))
+        {
+          ++accepted;
+        } else {
+          ++rejected;
+          RCLCPP_WARN(get_logger(), "Detector discovery observation rejected: %s", reason.c_str());
+        }
+      }
+    }
+    publishPersistentWorld(header);
+    response.blocks = latestWorldSnapshot();
+    response.success = true;
+    response.message = "Detector scene discovery: " + std::to_string(accepted) +
+      " associated, " + std::to_string(rejected) + " rejected.";
+    return true;
+  }
+
 void PerceptionOrchestratorNode::handleRunPoseEstimation(
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response)
@@ -26,6 +101,12 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
     if (run_mode == cbpwm::OneShotMode::kNone) {
       response->success = false;
       response->message = "Unsupported mode: " + request->mode;
+      return;
+    }
+
+    if (run_mode == cbpwm::OneShotMode::kSceneDiscovery) {
+      const double timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
+      runDetectorSceneDiscovery(timeout_s, *response);
       return;
     }
 

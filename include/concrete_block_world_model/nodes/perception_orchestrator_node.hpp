@@ -43,6 +43,7 @@
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
 #include "concrete_block_world_model_interfaces/srv/clear_block_goals.hpp"
 #include "concrete_block_world_model_interfaces/srv/clear_world_model.hpp"
+#include "concrete_block_world_model_interfaces/srv/discover_blocks.hpp"
 #include "concrete_block_perception_interfaces/srv/extract_mask_cutout.hpp"
 #include "concrete_block_world_model_interfaces/srv/run_pose_estimation.hpp"
 #include "concrete_block_world_model_interfaces/srv/set_block_task_status.hpp"
@@ -74,6 +75,7 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   using SetBlockGoalSrv = concrete_block_world_model_interfaces::srv::SetBlockGoal;
   using ClearBlockGoalsSrv = concrete_block_world_model_interfaces::srv::ClearBlockGoals;
   using ClearWorldModelSrv = concrete_block_world_model_interfaces::srv::ClearWorldModel;
+  using DiscoverBlocksSrv = concrete_block_world_model_interfaces::srv::DiscoverBlocks;
   using RegisterBlock = concrete_block_perception_interfaces::action::RegisterBlock;
   using GoalHandleRegisterBlock = rclcpp_action::ClientGoalHandle<RegisterBlock>;
 
@@ -222,6 +224,7 @@ private:
   void handleRunPoseEstimation(
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response);
+  bool runDetectorSceneDiscovery(double timeout_s, RunPoseSrv::Response & response);
   void handleGetCoarseBlocks(
     const std::shared_ptr<GetCoarseSrv::Request> request,
     std::shared_ptr<GetCoarseSrv::Response> response);
@@ -314,6 +317,7 @@ private:
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
+  rclcpp::Client<DiscoverBlocksSrv>::SharedPtr discover_blocks_client_;
   rclcpp_action::Client<RegisterBlock>::SharedPtr action_client_;
   rclcpp::Service<SetBlockTaskStatusSrv>::SharedPtr set_block_task_status_srv_;
   rclcpp::Service<UpsertBlockSrv>::SharedPtr upsert_block_srv_;
@@ -407,6 +411,7 @@ private:
   bool refine_block_use_pose_roi_{false};
   cbpwm::RoiInputConfig refine_block_roi_cfg_;
   bool scene_discovery_merge_enabled_{true};
+  std::string detector_discover_service_{"/concrete_block_detector/discover_blocks"};
   double scene_discovery_merge_containment_ratio_{0.3};
   double scene_discovery_merge_iou_threshold_{0.5};
   bool scene_discovery_coarse_fallback_enabled_{true};
