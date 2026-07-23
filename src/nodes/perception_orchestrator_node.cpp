@@ -33,11 +33,23 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "scene_discovery.overlay.enabled", true);
     scene_discovery_overlay_max_image_delta_s_ = declare_parameter<double>(
       "scene_discovery.overlay.max_image_delta_s", 0.08);
+    scene_discovery_overlay_fallback_max_image_delta_s_ = declare_parameter<double>(
+      "scene_discovery.overlay.fallback_max_image_delta_s", 0.50);
     if (scene_discovery_overlay_max_image_delta_s_ <= 0.0) {
       RCLCPP_WARN(
         get_logger(),
         "scene_discovery.overlay.max_image_delta_s must be positive; using 0.08 s");
       scene_discovery_overlay_max_image_delta_s_ = 0.08;
+    }
+    if (scene_discovery_overlay_fallback_max_image_delta_s_ <
+      scene_discovery_overlay_max_image_delta_s_)
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "scene_discovery.overlay.fallback_max_image_delta_s must be at least the strict image delta; using %.2f s",
+        scene_discovery_overlay_max_image_delta_s_);
+      scene_discovery_overlay_fallback_max_image_delta_s_ =
+        scene_discovery_overlay_max_image_delta_s_;
     }
     scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
     scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;

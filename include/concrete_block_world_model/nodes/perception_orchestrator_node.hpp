@@ -406,6 +406,7 @@ private:
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> scene_discovery_images_;
   bool scene_discovery_overlay_enabled_{true};
   double scene_discovery_overlay_max_image_delta_s_{0.08};
+  double scene_discovery_overlay_fallback_max_image_delta_s_{0.50};
   bool refine_grasped_use_fk_roi_{true};
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};

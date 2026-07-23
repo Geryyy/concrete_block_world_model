@@ -82,12 +82,23 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
   }
   const int64_t max_delta_ns = static_cast<int64_t>(
     std::llround(scene_discovery_overlay_max_image_delta_s_ * 1e9));
-  if (!image || best_delta_ns > max_delta_ns) {
+  const int64_t fallback_max_delta_ns = static_cast<int64_t>(
+    std::llround(scene_discovery_overlay_fallback_max_image_delta_s_ * 1e9));
+  if (!image || best_delta_ns > fallback_max_delta_ns) {
     RCLCPP_WARN(
       get_logger(),
-      "Scene-discovery pose overlay skipped: no Blackfly image within %.3f s of cloud stamp.",
-      scene_discovery_overlay_max_image_delta_s_);
+      "Scene-discovery pose overlay skipped: no Blackfly image within %.3f s of cloud stamp (nearest %.3f s).",
+      scene_discovery_overlay_fallback_max_image_delta_s_,
+      image ? static_cast<double>(best_delta_ns) * 1e-9 : -1.0);
     return;
+  }
+  const bool stale_rgb = best_delta_ns > max_delta_ns;
+  if (stale_rgb) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery pose overlay uses STALE RGB: image/cloud delta is %.3f s (strict limit %.3f s).",
+      static_cast<double>(best_delta_ns) * 1e-9,
+      scene_discovery_overlay_max_image_delta_s_);
   }
   if (image->header.frame_id.empty()) {
     RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: Blackfly image has no frame_id.");
@@ -112,7 +123,7 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
     RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: no cached CameraInfo.");
     return;
   }
-  if (best_camera_info_delta_ns > max_delta_ns) {
+  if (best_camera_info_delta_ns > fallback_max_delta_ns) {
     RCLCPP_WARN(
       get_logger(),
       "Scene-discovery pose overlay skipped: CameraInfo is %.3f s from selected image.",
@@ -210,11 +221,11 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
         pixels[corner]);
     }
     const cv::Scalar black(0, 0, 0);
-    const cv::Scalar cyan(0, 255, 255);
+    const cv::Scalar outline = stale_rgb ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 255);
     for (const auto & edge : kEdges) {
       if (visible[edge[0]] && visible[edge[1]]) {
         cv::line(output, pixels[edge[0]], pixels[edge[1]], black, 4, cv::LINE_AA);
-        cv::line(output, pixels[edge[0]], pixels[edge[1]], cyan, 2, cv::LINE_AA);
+        cv::line(output, pixels[edge[0]], pixels[edge[1]], outline, 2, cv::LINE_AA);
       }
     }
     const Eigen::Vector4d center_world_h(p_world.x(), p_world.y(), p_world.z(), 1.0);
@@ -227,13 +238,14 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
         intrinsics.projection_cy,
         center_pixel)) {
       std::ostringstream label;
-      label << (block.id.empty() ? "detected_block" : block.id)
+      label << (stale_rgb ? "STALE RGB " : "")
+            << (block.id.empty() ? "detected_block" : block.id)
             << " coarse score=" << std::fixed << std::setprecision(2) << block.confidence
             << " dt=" << std::setprecision(3) << static_cast<double>(best_delta_ns) * 1e-9 << "s";
       cv::putText(output, label.str(), center_pixel + cv::Point(8, -8),
         cv::FONT_HERSHEY_SIMPLEX, 0.5, black, 3, cv::LINE_AA);
       cv::putText(output, label.str(), center_pixel + cv::Point(8, -8),
-        cv::FONT_HERSHEY_SIMPLEX, 0.5, cyan, 1, cv::LINE_AA);
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, outline, 1, cv::LINE_AA);
     }
   }
   scene_discovery_pose_overlay_pub_->publish(
