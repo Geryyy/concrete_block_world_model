@@ -6,12 +6,15 @@
 
 #include <array>
 #include <cmath>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <unordered_set>
 
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 namespace
 {
@@ -20,6 +23,86 @@ int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
 {
   return static_cast<int64_t>(stamp.sec) * 1000000000LL +
     static_cast<int64_t>(stamp.nanosec);
+}
+
+std::string yamlEscape(const std::string & value)
+{
+  std::string out;
+  out.reserve(value.size());
+  for (const char c : value) {
+    if (c == '\\' || c == '"') {
+      out.push_back('\\');
+    }
+    out.push_back(c);
+  }
+  return out;
+}
+
+bool writeCaptureCloudPcd(
+  const std::filesystem::path & path,
+  const sensor_msgs::msg::PointCloud2 & cloud,
+  const rclcpp::Logger & logger)
+{
+  try {
+    sensor_msgs::PointCloud2ConstIterator<float> x(cloud, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> y(cloud, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> z(cloud, "z");
+    std::vector<std::array<float, 3>> points;
+    points.reserve(static_cast<size_t>(cloud.width) * static_cast<size_t>(cloud.height));
+    for (; x != x.end(); ++x, ++y, ++z) {
+      if (std::isfinite(*x) && std::isfinite(*y) && std::isfinite(*z)) {
+        points.push_back({*x, *y, *z});
+      }
+    }
+    std::ofstream out(path);
+    if (!out.is_open()) {
+      RCLCPP_WARN(logger, "Scene-discovery capture: failed to open %s", path.c_str());
+      return false;
+    }
+    out << "# .PCD v0.7 - Point Cloud Data file format\n"
+        << "VERSION 0.7\nFIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nCOUNT 1 1 1\n"
+        << "WIDTH " << points.size() << "\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\n"
+        << "POINTS " << points.size() << "\nDATA ascii\n";
+    out << std::setprecision(9);
+    for (const auto & point : points) {
+      out << point[0] << ' ' << point[1] << ' ' << point[2] << '\n';
+    }
+    return true;
+  } catch (const std::exception & ex) {
+    RCLCPP_WARN(logger, "Scene-discovery capture: cloud export failed: %s", ex.what());
+    return false;
+  }
+}
+
+bool writeCaptureImagePng(
+  const std::filesystem::path & path,
+  const sensor_msgs::msg::Image & image,
+  const rclcpp::Logger & logger)
+{
+  try {
+    auto cv_image = cv_bridge::toCvCopy(image);
+    cv::Mat output = cv_image->image;
+    if (cv_image->encoding == "rgb8") {
+      cv::cvtColor(output, output, cv::COLOR_RGB2BGR);
+    } else if (cv_image->encoding == "rgba8") {
+      cv::cvtColor(output, output, cv::COLOR_RGBA2BGRA);
+    }
+    if (!cv::imwrite(path.string(), output)) {
+      RCLCPP_WARN(logger, "Scene-discovery capture: failed to write %s", path.c_str());
+      return false;
+    }
+    return true;
+  } catch (const std::exception & ex) {
+    RCLCPP_WARN(logger, "Scene-discovery capture: RGB export failed: %s", ex.what());
+    return false;
+  }
+}
+
+std::string captureCandidateId(std::size_t index)
+{
+  std::ostringstream out;
+  out << "detector_candidate_" << std::setw(3) << std::setfill('0') << index;
+  return out.str();
 }
 
 bool projectPoint(
@@ -56,6 +139,162 @@ void PerceptionOrchestratorNode::cacheSceneDiscoveryImage(
   constexpr std::size_t kImageCacheCapacity = 30U;
   while (scene_discovery_images_.size() > kImageCacheCapacity) {
     scene_discovery_images_.pop_front();
+  }
+}
+
+void PerceptionOrchestratorNode::cacheSceneDiscoveryCloud(
+  const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(scene_discovery_image_mutex_);
+  scene_discovery_clouds_.push_back(std::move(msg));
+  constexpr std::size_t kCloudCacheCapacity = 30U;
+  while (scene_discovery_clouds_.size() > kCloudCacheCapacity) {
+    scene_discovery_clouds_.pop_front();
+  }
+}
+
+std::filesystem::path PerceptionOrchestratorNode::captureDetectorSceneDiscovery(
+  const DiscoverBlocksSrv::Response & detector_response,
+  const std_msgs::msg::Header & header)
+{
+  if (!scene_discovery_capture_enabled_) {
+    return {};
+  }
+
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud;
+  sensor_msgs::msg::Image::ConstSharedPtr image;
+  const int64_t stamp_ns = stampNanoseconds(header.stamp);
+  int64_t cloud_delta_ns = std::numeric_limits<int64_t>::max();
+  int64_t image_delta_ns = std::numeric_limits<int64_t>::max();
+  {
+    std::lock_guard<std::mutex> lock(scene_discovery_image_mutex_);
+    for (const auto & candidate : scene_discovery_clouds_) {
+      const int64_t delta = std::llabs(stampNanoseconds(candidate->header.stamp) - stamp_ns);
+      if (delta < cloud_delta_ns) {
+        cloud_delta_ns = delta;
+        cloud = candidate;
+      }
+    }
+    for (const auto & candidate : scene_discovery_images_) {
+      const int64_t delta = std::llabs(stampNanoseconds(candidate->header.stamp) - stamp_ns);
+      if (delta < image_delta_ns) {
+        image_delta_ns = delta;
+        image = candidate;
+      }
+    }
+  }
+  const int64_t max_cloud_delta_ns = static_cast<int64_t>(
+    std::llround(scene_discovery_capture_cloud_max_delta_s_ * 1e9));
+  if (!cloud || cloud_delta_ns > max_cloud_delta_ns) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Scene-discovery capture skipped: no raw cloud within %.3f s of detector stamp (nearest %.3f s).",
+      scene_discovery_capture_cloud_max_delta_s_,
+      cloud ? static_cast<double>(cloud_delta_ns) * 1e-9 : -1.0);
+    return {};
+  }
+
+  std::ostringstream name;
+  name << header.stamp.sec << '_' << std::setw(9) << std::setfill('0') << header.stamp.nanosec
+       << "_request" << ++scene_discovery_capture_counter_;
+  const auto capture_dir = scene_discovery_capture_dir_ / name.str();
+  try {
+    std::filesystem::create_directories(capture_dir);
+  } catch (const std::exception & ex) {
+    RCLCPP_WARN(
+      get_logger(), "Scene-discovery capture skipped: cannot create %s: %s",
+      capture_dir.c_str(), ex.what());
+    return {};
+  }
+
+  const bool cloud_written = writeCaptureCloudPcd(capture_dir / "cloud.pcd", *cloud, get_logger());
+  bool image_written = false;
+  if (image) {
+    image_written = writeCaptureImagePng(capture_dir / "rgb.png", *image, get_logger());
+    writeSceneDiscoveryTfSnapshot(capture_dir, *image, *cloud);
+  } else {
+    RCLCPP_WARN(get_logger(), "Scene-discovery capture: no RGB image cached for this detector request.");
+  }
+
+  std::ofstream metadata(capture_dir / "metadata.yaml");
+  if (metadata.is_open()) {
+    metadata << "schema_version: 1\n"
+             << "capture_kind: direct_detector_scene_discovery\n"
+             << "reference_frame: \"" << yamlEscape(world_frame_) << "\"\n"
+             << "detector_service: \"" << yamlEscape(detector_discover_service_) << "\"\n"
+             << "detector_message: \"" << yamlEscape(detector_response.message) << "\"\n"
+             << "cloud:\n"
+             << "  frame_id: \"" << yamlEscape(cloud->header.frame_id) << "\"\n"
+             << "  stamp: {sec: " << cloud->header.stamp.sec << ", nanosec: "
+             << cloud->header.stamp.nanosec << "}\n"
+             << "  detector_stamp_delta_s: " << static_cast<double>(cloud_delta_ns) * 1e-9 << "\n"
+             << "  file: " << (cloud_written ? "cloud.pcd" : "null") << "\n"
+             << "rgb:\n";
+    if (image) {
+      metadata << "  frame_id: \"" << yamlEscape(image->header.frame_id) << "\"\n"
+               << "  stamp: {sec: " << image->header.stamp.sec << ", nanosec: "
+               << image->header.stamp.nanosec << "}\n"
+               << "  detector_stamp_delta_s: " << static_cast<double>(image_delta_ns) * 1e-9 << "\n"
+               << "  file: " << (image_written ? "rgb.png" : "null") << "\n";
+    } else {
+      metadata << "  file: null\n";
+    }
+  }
+
+  std::ofstream candidates(capture_dir / "detector_candidates.yaml");
+  if (candidates.is_open()) {
+    candidates << "schema_version: 1\n"
+               << "candidate_id_namespace: request_local\n"
+               << "reference_frame: \"" << yamlEscape(world_frame_) << "\"\n"
+               << "candidates:\n";
+    for (std::size_t index = 0; index < detector_response.blocks.blocks.size(); ++index) {
+      const auto & block = detector_response.blocks.blocks[index];
+      candidates << "  - candidate_id: \"" << captureCandidateId(index) << "\"\n"
+                 << "    detector_id: \"" << yamlEscape(block.id) << "\"\n"
+                 << "    confidence: " << block.confidence << "\n"
+                 << "    pose_status: " << block.pose_status << "\n"
+                 << "    pose:\n"
+                 << "      position: [" << block.pose.position.x << ", " << block.pose.position.y
+                 << ", " << block.pose.position.z << "]\n"
+                 << "      orientation_xyzw: [" << block.pose.orientation.x << ", "
+                 << block.pose.orientation.y << ", " << block.pose.orientation.z << ", "
+                 << block.pose.orientation.w << "]\n"
+                 << "    dimensions: [" << block_dimensions_m_[0] << ", " << block_dimensions_m_[1]
+                 << ", " << block_dimensions_m_[2] << "]\n";
+    }
+  }
+
+  // Valid Blockpose schema-v2 starter. It intentionally contains no ground truth:
+  // an operator must set the reviewed ROI and approve visible blocks before marking
+  // the snapshot complete.
+  std::ofstream annotations(capture_dir / "annotations.yaml");
+  if (annotations.is_open()) {
+    annotations << "schema_version: 2\n"
+                << "snapshot: \"" << yamlEscape(capture_dir.filename().string()) << "\"\n"
+                << "annotation_complete: false\n"
+                << "blocks: []\n"
+                << "unmatched_detection_reviews: {}\n"
+                << "notes: \"Raw detector candidates are in detector_candidates.yaml.\"\n";
+  }
+  RCLCPP_INFO(get_logger(), "Scene-discovery capture saved: %s", capture_dir.c_str());
+  return capture_dir;
+}
+
+void PerceptionOrchestratorNode::writeDetectorSceneDiscoveryAssociations(
+  const std::filesystem::path & capture_dir,
+  const std::vector<std::string> & records) const
+{
+  if (capture_dir.empty()) {
+    return;
+  }
+  std::ofstream out(capture_dir / "associations.yaml");
+  if (!out.is_open()) {
+    RCLCPP_WARN(get_logger(), "Scene-discovery capture: failed to write associations in %s", capture_dir.c_str());
+    return;
+  }
+  out << "schema_version: 1\nassociation_results:\n";
+  for (const auto & record : records) {
+    out << record;
   }
 }
 
@@ -307,9 +546,13 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
     if (header.stamp.sec == 0 && header.stamp.nanosec == 0U) {
       header.stamp = now();
     }
+    // Capture before association: this preserves the detector's anonymous raw
+    // observations even when the world model later merges or rejects them.
+    const auto capture_dir = captureDetectorSceneDiscovery(*detector_response, header);
     std::size_t accepted = 0;
     std::size_t rejected = 0;
     std::vector<Block> accepted_blocks;
+    std::vector<std::string> association_records;
     {
       // Associate every detector observation against the same pre-discovery
       // snapshot.  Inserting each observation immediately would let later
@@ -324,7 +567,10 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
         runtime_cfg_.scene_discovery_min_detector_confidence;
       discovery_association.association_max_distance_m =
         runtime_cfg_.scene_discovery_association_max_distance_m;
-      for (auto incoming : detector_response->blocks.blocks) {
+      for (std::size_t candidate_index = 0;
+        candidate_index < detector_response->blocks.blocks.size(); ++candidate_index)
+      {
+        auto incoming = detector_response->blocks.blocks[candidate_index];
         incoming.id.clear();
         incoming.pose_status = Block::POSE_COARSE;
         incoming.task_status = Block::TASK_FREE;
@@ -349,9 +595,21 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
           }
           pending_updates.emplace_back(assigned_id, std::move(candidate_world.at(assigned_id)));
           accepted_blocks.push_back(pending_updates.back().second);
+          if (!capture_dir.empty()) {
+            association_records.push_back(
+              "  - candidate_id: \"" + captureCandidateId(candidate_index) + "\"\n" +
+              "    accepted: true\n" +
+              "    assigned_world_id: \"" + yamlEscape(assigned_id) + "\"\n");
+          }
           ++accepted;
         } else {
           ++rejected;
+          if (!capture_dir.empty()) {
+            association_records.push_back(
+              "  - candidate_id: \"" + captureCandidateId(candidate_index) + "\"\n" +
+              "    accepted: false\n" +
+              "    reason: \"" + yamlEscape(reason) + "\"\n");
+          }
           RCLCPP_WARN(get_logger(), "Detector discovery observation rejected: %s", reason.c_str());
         }
       }
@@ -359,6 +617,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
         persistent_world_[update.first] = std::move(update.second);
       }
     }
+    writeDetectorSceneDiscoveryAssociations(capture_dir, association_records);
     publishPersistentWorld(header);
     publishSceneDiscoveryPoseOverlay(header, accepted_blocks);
     response.blocks = latestWorldSnapshot();

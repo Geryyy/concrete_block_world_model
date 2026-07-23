@@ -233,6 +233,16 @@ private:
     std::shared_ptr<RunPoseSrv::Response> response);
   bool runDetectorSceneDiscovery(double timeout_s, RunPoseSrv::Response & response);
   void cacheSceneDiscoveryImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
+  void cacheSceneDiscoveryCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
+  // Persist a detector request before association so a later operator review can
+  // distinguish raw observations from world-model state. Returns empty when the
+  // explicitly opt-in capture is disabled or the matching raw cloud is absent.
+  std::filesystem::path captureDetectorSceneDiscovery(
+    const DiscoverBlocksSrv::Response & detector_response,
+    const std_msgs::msg::Header & header);
+  void writeDetectorSceneDiscoveryAssociations(
+    const std::filesystem::path & capture_dir,
+    const std::vector<std::string> & records) const;
   void publishSceneDiscoveryPoseOverlay(
     const std_msgs::msg::Header & cloud_header,
     const std::vector<Block> & blocks);
@@ -326,6 +336,7 @@ private:
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr scene_discovery_image_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr scene_discovery_cloud_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
@@ -404,9 +415,15 @@ private:
   std::deque<sensor_msgs::msg::CameraInfo::SharedPtr> scene_discovery_camera_infos_;
   std::mutex scene_discovery_image_mutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> scene_discovery_images_;
+  std::deque<sensor_msgs::msg::PointCloud2::ConstSharedPtr> scene_discovery_clouds_;
   bool scene_discovery_overlay_enabled_{true};
   double scene_discovery_overlay_max_image_delta_s_{0.08};
   double scene_discovery_overlay_fallback_max_image_delta_s_{0.50};
+  bool scene_discovery_capture_enabled_{false};
+  std::filesystem::path scene_discovery_capture_dir_{"scene_discovery_capture"};
+  std::string scene_discovery_capture_cloud_topic_{"/seyond/points/cloudini"};
+  double scene_discovery_capture_cloud_max_delta_s_{0.005};
+  uint64_t scene_discovery_capture_counter_{0};
   bool refine_grasped_use_fk_roi_{true};
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};

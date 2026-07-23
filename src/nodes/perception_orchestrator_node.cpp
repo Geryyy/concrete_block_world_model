@@ -35,6 +35,14 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "scene_discovery.overlay.max_image_delta_s", 0.08);
     scene_discovery_overlay_fallback_max_image_delta_s_ = declare_parameter<double>(
       "scene_discovery.overlay.fallback_max_image_delta_s", 0.50);
+    scene_discovery_capture_enabled_ = declare_parameter<bool>(
+      "scene_discovery.capture.enabled", false);
+    scene_discovery_capture_dir_ = declare_parameter<std::string>(
+      "scene_discovery.capture.dir", "scene_discovery_capture");
+    scene_discovery_capture_cloud_topic_ = declare_parameter<std::string>(
+      "scene_discovery.capture.cloud_topic", "/seyond/points/cloudini");
+    scene_discovery_capture_cloud_max_delta_s_ = declare_parameter<double>(
+      "scene_discovery.capture.cloud_max_delta_s", 0.005);
     if (scene_discovery_overlay_max_image_delta_s_ <= 0.0) {
       RCLCPP_WARN(
         get_logger(),
@@ -50,6 +58,12 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         scene_discovery_overlay_max_image_delta_s_);
       scene_discovery_overlay_fallback_max_image_delta_s_ =
         scene_discovery_overlay_max_image_delta_s_;
+    }
+    if (scene_discovery_capture_cloud_max_delta_s_ < 0.0) {
+      RCLCPP_WARN(
+        get_logger(),
+        "scene_discovery.capture.cloud_max_delta_s must be non-negative; using 0.005 s");
+      scene_discovery_capture_cloud_max_delta_s_ = 0.005;
     }
     scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
     scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;
@@ -210,7 +224,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "block_goal_markers", marker_qos);
 
     image_sub_.subscribe(this, "image");
-    if (scene_discovery_overlay_enabled_) {
+    if (scene_discovery_overlay_enabled_ || scene_discovery_capture_enabled_) {
       scene_discovery_image_sub_ = create_subscription<sensor_msgs::msg::Image>(
         "image",
         rclcpp::SensorDataQoS(),
@@ -218,6 +232,19 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
           &PerceptionOrchestratorNode::cacheSceneDiscoveryImage,
           this,
           std::placeholders::_1));
+    }
+    if (scene_discovery_capture_enabled_) {
+      scene_discovery_cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+        scene_discovery_capture_cloud_topic_,
+        rclcpp::SensorDataQoS(),
+        std::bind(
+          &PerceptionOrchestratorNode::cacheSceneDiscoveryCloud,
+          this,
+          std::placeholders::_1));
+      RCLCPP_INFO(
+        get_logger(),
+        "Scene-discovery capture enabled: dir=%s cloud_topic=%s",
+        scene_discovery_capture_dir_.c_str(), scene_discovery_capture_cloud_topic_.c_str());
     }
     cloud_sub_.subscribe(this, "points");
     sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
