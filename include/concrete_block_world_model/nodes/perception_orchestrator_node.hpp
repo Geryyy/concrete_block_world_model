@@ -404,7 +404,7 @@ private:
   std::mutex scene_discovery_image_mutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> scene_discovery_images_;
   bool scene_discovery_overlay_enabled_{true};
-  double scene_discovery_overlay_max_image_delta_s_{0.06};
+  double scene_discovery_overlay_max_image_delta_s_{0.08};
   bool refine_grasped_use_fk_roi_{true};
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
