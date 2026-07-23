@@ -111,6 +111,8 @@ class PerceptionOrchestratorNode : public rclcpp::Node
     double association_max_distance_m{0.45};
     double association_max_age_s{20.0};
     double min_update_confidence{0.25};
+    double scene_discovery_min_detector_confidence{0.25};
+    double scene_discovery_association_max_distance_m{0.45};
     double refine_target_max_distance_m{1.2};
   };
 
@@ -411,6 +413,8 @@ private:
   bool refine_block_use_pose_roi_{false};
   cbpwm::RoiInputConfig refine_block_roi_cfg_;
   bool scene_discovery_merge_enabled_{true};
+  double scene_discovery_min_detector_confidence_{0.25};
+  double scene_discovery_association_max_distance_m_{0.45};
   std::string detector_discover_service_{"/concrete_block_detector/discover_blocks"};
   double scene_discovery_merge_containment_ratio_{0.3};
   double scene_discovery_merge_iou_threshold_{0.5};

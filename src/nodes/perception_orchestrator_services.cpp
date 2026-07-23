@@ -63,26 +63,51 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
     std::size_t accepted = 0;
     std::size_t rejected = 0;
     {
-      // Discovery is one world-model transaction: association observes a stable
-      // snapshot and no partially associated detector result is published.
+      // Associate every detector observation against the same pre-discovery
+      // snapshot.  Inserting each observation immediately would let later
+      // observations associate to earlier observations from this same cloud,
+      // collapsing distinct nearby blocks into one world-model entry.
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto association_snapshot = persistent_world_;
+      std::unordered_set<std::string> claimed_existing_ids;
+      std::vector<std::pair<std::string, Block>> pending_updates;
+      auto discovery_association = associationConfig();
+      discovery_association.min_update_confidence =
+        runtime_cfg_.scene_discovery_min_detector_confidence;
+      discovery_association.association_max_distance_m =
+        runtime_cfg_.scene_discovery_association_max_distance_m;
       for (auto incoming : detector_response->blocks.blocks) {
         incoming.id.clear();
         incoming.pose_status = Block::POSE_COARSE;
         incoming.task_status = Block::TASK_FREE;
         incoming.last_seen = header.stamp;
+
+        // Remove already claimed prior-world entries.  This makes association
+        // one-to-one within the detector response while preserving the stable
+        // snapshot for every other decision.
+        auto candidate_world = association_snapshot;
+        for (const auto & id : claimed_existing_ids) {
+          candidate_world.erase(id);
+        }
         std::string assigned_id;
         std::string reason;
         if (cbpwm::upsertRegisteredBlock(
-            persistent_world_, world_block_counter_, incoming,
+            candidate_world, world_block_counter_, incoming,
             cbpwm::OneShotMode::kSceneDiscovery, "", header, *get_clock(),
-            associationConfig(), assigned_id, reason))
+            discovery_association, assigned_id, reason))
         {
+          if (association_snapshot.find(assigned_id) != association_snapshot.end()) {
+            claimed_existing_ids.insert(assigned_id);
+          }
+          pending_updates.emplace_back(assigned_id, std::move(candidate_world.at(assigned_id)));
           ++accepted;
         } else {
           ++rejected;
           RCLCPP_WARN(get_logger(), "Detector discovery observation rejected: %s", reason.c_str());
         }
+      }
+      for (auto & update : pending_updates) {
+        persistent_world_[update.first] = std::move(update.second);
       }
     }
     publishPersistentWorld(header);

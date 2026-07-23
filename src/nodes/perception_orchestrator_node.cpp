@@ -22,6 +22,10 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     runtime_cfg_.association_max_distance_m = startup.association_max_distance_m;
     runtime_cfg_.association_max_age_s = startup.association_max_age_s;
     runtime_cfg_.min_update_confidence = startup.min_update_confidence;
+    runtime_cfg_.scene_discovery_min_detector_confidence =
+      startup.scene_discovery_min_detector_confidence;
+    runtime_cfg_.scene_discovery_association_max_distance_m =
+      startup.scene_discovery_association_max_distance_m;
     runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
     detector_discover_service_ = declare_parameter<std::string>(
       "scene_discovery.detector_service", "/concrete_block_detector/discover_blocks");

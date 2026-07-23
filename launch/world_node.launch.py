@@ -13,6 +13,13 @@ def generate_launch_description():
             "world_model.yaml",
         ]
     )
+    default_scene_discovery_params = PathJoinSubstitution(
+        [
+            FindPackageShare("concrete_block_world_model"),
+            "config",
+            "scene_discovery_defaults.yaml",
+        ]
+    )
 
     return LaunchDescription(
         [
@@ -34,12 +41,17 @@ def generate_launch_description():
                 "params_file",
                 default_value=default_world_model_params,
             ),
+            DeclareLaunchArgument(
+                "scene_discovery_params",
+                default_value=default_scene_discovery_params,
+            ),
             Node(
                 package="concrete_block_world_model",
                 executable="world_model_node",
                 name="world_model_node",
                 parameters=[
                     LaunchConfiguration("params_file"),
+                    LaunchConfiguration("scene_discovery_params"),
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                         "perception_mode": LaunchConfiguration("perception_mode"),
@@ -59,7 +71,10 @@ def generate_launch_description():
                     ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
                     ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
                     ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
-                    ("timing/continuous_registration_ms", "/cbp/timing/continuous_registration_ms"),
+                    (
+                        "timing/continuous_registration_ms",
+                        "/cbp/timing/continuous_registration_ms",
+                    ),
                     ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
                     ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
                     ("timing/continuous_detections", "/cbp/timing/continuous_detections"),

@@ -329,6 +329,12 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.min_update_confidence = node.declare_parameter<double>(
     "world_model.min_update_confidence",
     0.25);
+  cfg.scene_discovery_min_detector_confidence = node.declare_parameter<double>(
+    "world_model.scene_discovery.min_detector_confidence",
+    cfg.min_update_confidence);
+  cfg.scene_discovery_association_max_distance_m = node.declare_parameter<double>(
+    "world_model.scene_discovery.association_max_distance_m",
+    cfg.association_max_distance_m);
   cfg.task_move_fk_tracking_enabled = node.declare_parameter<bool>(
     "task_move.fk_tracking.enabled",
     true);
@@ -465,6 +471,12 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min(cfg.association_max_distance_m, 0.01, "world_model.association_max_distance_m");
   clamp_min(cfg.association_max_age_s, 0.1, "world_model.association_max_age_s");
   clamp_min(cfg.min_update_confidence, 0.0, "world_model.min_update_confidence");
+  clamp_min(
+    cfg.scene_discovery_min_detector_confidence, 0.0,
+    "world_model.scene_discovery.min_detector_confidence");
+  clamp_min(
+    cfg.scene_discovery_association_max_distance_m, 0.01,
+    "world_model.scene_discovery.association_max_distance_m");
   clamp_min(cfg.refine_target_max_distance_m, 0.01, "world_model.refine_target_max_distance_m");
   clamp_min_i(
     cfg.scene_discovery_coarse_fallback_min_points, 1,

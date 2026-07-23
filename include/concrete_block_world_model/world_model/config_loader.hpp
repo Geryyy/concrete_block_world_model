@@ -41,6 +41,8 @@ struct WorldModelConfig
   double association_max_distance_m{0.45};
   double association_max_age_s{20.0};
   double min_update_confidence{0.25};
+  double scene_discovery_min_detector_confidence{0.25};
+  double scene_discovery_association_max_distance_m{0.45};
   bool task_move_fk_tracking_enabled{true};
   double refine_target_max_distance_m{1.2};
   bool scene_discovery_merge_enabled{true};

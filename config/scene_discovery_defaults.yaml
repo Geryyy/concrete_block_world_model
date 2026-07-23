@@ -1,0 +1,8 @@
+world_model_node:
+  ros__parameters:
+    world_model:
+      scene_discovery:
+        # Preserve normal world-model association gates unless a replay/workcell
+        # profile explicitly calibrates discovery.
+        min_detector_confidence: 0.25
+        association_max_distance_m: 0.45
