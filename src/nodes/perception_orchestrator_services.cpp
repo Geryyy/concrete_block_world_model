@@ -536,6 +536,45 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
 
     auto request = std::make_shared<DiscoverBlocksSrv::Request>();
     request->timeout_s = static_cast<float>(timeout_s);
+    if (scene_discovery_registered_priors_enabled_ ||
+      scene_discovery_wall_plan_priors_enabled_)
+    {
+      // The service owns no world state.  Snapshot it here and express the
+      // two world-model sources as ordinary priors, so the detector core does
+      // not know (or care) whether a pose came from a prior registration or a
+      // wall-placement plan.
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      request->priors.reserve(
+        persistent_world_.size() *
+        ((scene_discovery_registered_priors_enabled_ ? 1U : 0U) +
+        (scene_discovery_wall_plan_priors_enabled_ ? 1U : 0U)));
+      const auto append_prior = [this, &request](
+          const std::string & source, const geometry_msgs::msg::Pose & pose,
+          double weight) {
+          concrete_block_world_model_interfaces::msg::PosePrior prior;
+          prior.source = source;
+          prior.pose = pose;
+          prior.dimensions = block_dimensions_m_;
+          prior.weight = static_cast<float>(weight);
+          prior.translation_tolerance_m =
+            static_cast<float>(scene_discovery_prior_translation_tolerance_m_);
+          prior.orientation_tolerance_rad =
+            static_cast<float>(scene_discovery_prior_orientation_tolerance_rad_);
+          request->priors.push_back(std::move(prior));
+        };
+      for (const auto & [id, block] : persistent_world_) {
+        if (scene_discovery_registered_priors_enabled_) {
+          append_prior("registered_block:" + id, block.pose,
+            scene_discovery_registered_prior_weight_);
+        }
+        if (scene_discovery_wall_plan_priors_enabled_ &&
+          block.goal_status == Block::GOAL_SET)
+        {
+          append_prior("wall_plan:" + id, block.goal_pose,
+            scene_discovery_wall_plan_prior_weight_);
+        }
+      }
+    }
     auto future = discover_blocks_client_->async_send_request(request);
     if (future.wait_for(std::chrono::duration<double>(timeout_s)) != std::future_status::ready) {
       response.success = false;

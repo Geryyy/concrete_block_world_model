@@ -45,6 +45,18 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "scene_discovery.capture.cloud_transport", "cloudini");
     scene_discovery_capture_cloud_max_delta_s_ = declare_parameter<double>(
       "scene_discovery.capture.cloud_max_delta_s", 0.005);
+    scene_discovery_registered_priors_enabled_ = declare_parameter<bool>(
+      "scene_discovery.priors.registered_blocks.enabled", false);
+    scene_discovery_wall_plan_priors_enabled_ = declare_parameter<bool>(
+      "scene_discovery.priors.wall_plan.enabled", false);
+    scene_discovery_registered_prior_weight_ = declare_parameter<double>(
+      "scene_discovery.priors.registered_blocks.weight", 0.20);
+    scene_discovery_wall_plan_prior_weight_ = declare_parameter<double>(
+      "scene_discovery.priors.wall_plan.weight", 0.15);
+    scene_discovery_prior_translation_tolerance_m_ = declare_parameter<double>(
+      "scene_discovery.priors.translation_tolerance_m", 0.35);
+    scene_discovery_prior_orientation_tolerance_rad_ = declare_parameter<double>(
+      "scene_discovery.priors.orientation_tolerance_rad", 0.70);
     if (scene_discovery_overlay_max_image_delta_s_ <= 0.0) {
       RCLCPP_WARN(
         get_logger(),
@@ -66,6 +78,13 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         get_logger(),
         "scene_discovery.capture.cloud_max_delta_s must be non-negative; using 0.005 s");
       scene_discovery_capture_cloud_max_delta_s_ = 0.005;
+    }
+    if (scene_discovery_registered_prior_weight_ < 0.0 ||
+      scene_discovery_wall_plan_prior_weight_ < 0.0 ||
+      scene_discovery_prior_translation_tolerance_m_ <= 0.0 ||
+      scene_discovery_prior_orientation_tolerance_rad_ <= 0.0)
+    {
+      throw std::invalid_argument("scene_discovery pose-prior weights and tolerances must be positive");
     }
     scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
     scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;

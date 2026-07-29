@@ -430,6 +430,15 @@ private:
   std::string scene_discovery_capture_cloud_transport_{"cloudini"};
   double scene_discovery_capture_cloud_max_delta_s_{0.005};
   uint64_t scene_discovery_capture_counter_{0};
+  // Optional world-model adapters for the detector's generic pose-prior API.
+  // Disabled by default: an old/stale world model must not influence a fresh
+  // scene scan unless the deployment opts in.
+  bool scene_discovery_registered_priors_enabled_{false};
+  bool scene_discovery_wall_plan_priors_enabled_{false};
+  double scene_discovery_registered_prior_weight_{0.20};
+  double scene_discovery_wall_plan_prior_weight_{0.15};
+  double scene_discovery_prior_translation_tolerance_m_{0.35};
+  double scene_discovery_prior_orientation_tolerance_rad_{0.70};
   bool refine_grasped_use_fk_roi_{true};
   bool task_move_fk_tracking_enabled_{true};
   std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
