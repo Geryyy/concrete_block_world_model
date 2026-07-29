@@ -252,6 +252,7 @@ std::filesystem::path PerceptionOrchestratorNode::captureDetectorSceneDiscovery(
       candidates << "  - candidate_id: \"" << captureCandidateId(index) << "\"\n"
                  << "    detector_id: \"" << yamlEscape(block.id) << "\"\n"
                  << "    confidence: " << block.confidence << "\n"
+                 << "    observed_faces: " << static_cast<unsigned int>(block.observed_faces) << "\n"
                  << "    pose_status: " << block.pose_status << "\n"
                  << "    pose:\n"
                  << "      position: [" << block.pose.position.x << ", " << block.pose.position.y
@@ -281,6 +282,7 @@ std::filesystem::path PerceptionOrchestratorNode::captureDetectorSceneDiscovery(
                   << "    review_status: pending\n"
                   << "    visibility: unknown\n"
                   << "    confidence: " << block.confidence << "\n"
+                  << "    observed_faces: " << static_cast<unsigned int>(block.observed_faces) << "\n"
                   << "    dimensions: [" << block_dimensions_m_[0] << ", " << block_dimensions_m_[1]
                   << ", " << block_dimensions_m_[2] << "]\n"
                   << "    pose:\n"
@@ -589,7 +591,18 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
       {
         auto incoming = detector_response->blocks.blocks[candidate_index];
         incoming.id.clear();
-        incoming.pose_status = Block::POSE_COARSE;
+        // Preserve the detector's geometry quality: top+side constrains the
+        // cuboid; top-only remains intentionally coarse for later refinement.
+        if (incoming.observed_faces >= 2U) {
+          incoming.pose_status = Block::POSE_PRECISE;
+          // This is a geometry-constrained detector pose, not a registration
+          // result. Keep its covariance deliberately wider until replay labels
+          // calibrate the detector's measurement uncertainty.
+          setDiagonalPoseCovariance(incoming, 0.05, 0.15);
+        } else {
+          incoming.pose_status = Block::POSE_COARSE;
+          setDefaultPoseCovariance(incoming);
+        }
         incoming.task_status = Block::TASK_FREE;
         incoming.last_seen = header.stamp;
 
