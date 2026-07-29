@@ -40,7 +40,9 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     scene_discovery_capture_dir_ = declare_parameter<std::string>(
       "scene_discovery.capture.dir", "scene_discovery_capture");
     scene_discovery_capture_cloud_topic_ = declare_parameter<std::string>(
-      "scene_discovery.capture.cloud_topic", "/seyond/points/cloudini");
+      "scene_discovery.capture.cloud_topic", "/seyond/points");
+    scene_discovery_capture_cloud_transport_ = declare_parameter<std::string>(
+      "scene_discovery.capture.cloud_transport", "cloudini");
     scene_discovery_capture_cloud_max_delta_s_ = declare_parameter<double>(
       "scene_discovery.capture.cloud_max_delta_s", 0.005);
     if (scene_discovery_overlay_max_image_delta_s_ <= 0.0) {
@@ -232,19 +234,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
           &PerceptionOrchestratorNode::cacheSceneDiscoveryImage,
           this,
           std::placeholders::_1));
-    }
-    if (scene_discovery_capture_enabled_) {
-      scene_discovery_cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-        scene_discovery_capture_cloud_topic_,
-        rclcpp::SensorDataQoS(),
-        std::bind(
-          &PerceptionOrchestratorNode::cacheSceneDiscoveryCloud,
-          this,
-          std::placeholders::_1));
-      RCLCPP_INFO(
-        get_logger(),
-        "Scene-discovery capture enabled: dir=%s cloud_topic=%s",
-        scene_discovery_capture_dir_.c_str(), scene_discovery_capture_cloud_topic_.c_str());
     }
     cloud_sub_.subscribe(this, "points");
     sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
@@ -445,11 +434,33 @@ void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelCo
     startup.initial_blocks.size());
 }
 
+void PerceptionOrchestratorNode::start()
+{
+  if (!scene_discovery_capture_enabled_ || scene_discovery_cloud_sub_) {
+    return;
+  }
+  scene_discovery_cloud_sub_ = point_cloud_transport::create_subscription(
+    shared_from_this(),
+    scene_discovery_capture_cloud_topic_,
+    std::bind(
+      &PerceptionOrchestratorNode::cacheSceneDiscoveryCloud,
+      this,
+      std::placeholders::_1),
+    scene_discovery_capture_cloud_transport_,
+    rclcpp::SensorDataQoS().get_rmw_qos_profile());
+  RCLCPP_INFO(
+    get_logger(),
+    "Scene-discovery capture enabled: dir=%s cloud_topic=%s transport=%s",
+    scene_discovery_capture_dir_.c_str(), scene_discovery_capture_cloud_topic_.c_str(),
+    scene_discovery_capture_cloud_transport_.c_str());
+}
+
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
 
   auto node = std::make_shared<PerceptionOrchestratorNode>();
+  node->start();
   rclcpp::executors::MultiThreadedExecutor exec(rclcpp::ExecutorOptions(), 4);
   exec.add_node(node);
   exec.spin();

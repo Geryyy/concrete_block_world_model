@@ -21,6 +21,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
 #include <opencv2/opencv.hpp>
+#include <point_cloud_transport/point_cloud_transport.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -123,6 +124,10 @@ class PerceptionOrchestratorNode : public rclcpp::Node
 
 public:
   PerceptionOrchestratorNode();
+
+  // Must run after make_shared<PerceptionOrchestratorNode>().  The Cloudini
+  // transport subscriber needs the node's shared ownership.
+  void start();
 
 private:
   void resetPerfCounters();
@@ -336,7 +341,7 @@ private:
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr scene_discovery_image_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr scene_discovery_cloud_sub_;
+  point_cloud_transport::Subscriber scene_discovery_cloud_sub_;
 
   rclcpp::Client<SegmentSrv>::SharedPtr segment_client_;
   rclcpp::Client<ExtractMaskCutoutSrv>::SharedPtr extract_mask_cutout_client_;
@@ -421,7 +426,8 @@ private:
   double scene_discovery_overlay_fallback_max_image_delta_s_{0.50};
   bool scene_discovery_capture_enabled_{false};
   std::filesystem::path scene_discovery_capture_dir_{"scene_discovery_capture"};
-  std::string scene_discovery_capture_cloud_topic_{"/seyond/points/cloudini"};
+  std::string scene_discovery_capture_cloud_topic_{"/seyond/points"};
+  std::string scene_discovery_capture_cloud_transport_{"cloudini"};
   double scene_discovery_capture_cloud_max_delta_s_{0.005};
   uint64_t scene_discovery_capture_counter_{0};
   bool refine_grasped_use_fk_roi_{true};

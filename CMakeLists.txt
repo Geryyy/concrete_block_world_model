@@ -13,6 +13,7 @@ find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(point_cloud_transport REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(ros2_yolos_cpp REQUIRED)
@@ -61,6 +62,7 @@ ament_target_dependencies(world_model_node
   cv_bridge
   geometry_msgs
   message_filters
+  point_cloud_transport
   rclcpp
   rclcpp_action
   ros2_yolos_cpp
