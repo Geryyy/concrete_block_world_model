@@ -124,19 +124,37 @@ bool PerceptionOrchestratorNode::lookupTcpInWorld(
       return false;
     }
 
+  try {
+    const auto tf_world_tcp = tf_buffer_->lookupTransform(
+      world_frame_,
+      refine_grasped_tcp_frame_,
+      rclcpp::Time(header.stamp),
+      rclcpp::Duration::from_seconds(0.2));
+    T_world_tcp = transformToEigen(tf_world_tcp);
+    return true;
+  } catch (const tf2::TransformException & ex) {
+    // FK tracking runs from a wall timer as well as from sensor callbacks.
+    // A timer tick at `now()` can be a few milliseconds newer than the most
+    // recent joint-state TF, especially in Gazebo.  The latest transform is
+    // the correct physical state for that use case; do not leave a carried
+    // block frozen at its pickup pose merely because an exact stamped lookup
+    // extrapolates forward.
     try {
-      const auto tf_world_tcp = tf_buffer_->lookupTransform(
-        world_frame_,
-        refine_grasped_tcp_frame_,
-        rclcpp::Time(header.stamp),
-        rclcpp::Duration::from_seconds(0.2));
-      T_world_tcp = transformToEigen(tf_world_tcp);
+      const auto latest_tf_world_tcp = tf_buffer_->lookupTransform(
+        world_frame_, refine_grasped_tcp_frame_, tf2::TimePointZero,
+        tf2::durationFromSec(0.2));
+      T_world_tcp = transformToEigen(latest_tf_world_tcp);
+      RCLCPP_DEBUG(
+        get_logger(),
+        "TCP FK lookup at stamp failed (%s); using latest transform", ex.what());
       return true;
-    } catch (const tf2::TransformException & ex) {
-      reason = std::string("TF lookup failed: ") + ex.what();
+    } catch (const tf2::TransformException & latest_ex) {
+      reason = std::string("TF lookup failed at requested stamp: ") + ex.what() +
+        "; latest lookup failed: " + latest_ex.what();
       return false;
     }
   }
+}
 
 bool PerceptionOrchestratorNode::captureGraspOffsetFromPose(
     const geometry_msgs::msg::Pose & block_pose,
