@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
 
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <vector>
@@ -215,4 +217,152 @@ TEST(CollisionScene, DropsAnObjectTheTransformDoesNotComeFrom) {
   ASSERT_EQ(converted.scene.primitives.size(), 1u);
   EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
   EXPECT_EQ(converted.dropped.size(), 1u);
+}
+
+namespace
+{
+
+// The vehicle box the shipped config carries, as the tests need it: a load area long enough for
+// the planner's three runge stations, keyed to the same world frame the transform comes from.
+cbpwm::VehicleBoxConfig configuredVehicleBox()
+{
+  cbpwm::VehicleBoxConfig box;
+  box.enabled = true;
+  box.frame_id = "world";
+  box.position = {-3.512, 0.35, 0.235575};
+  box.dimensions = {6.594, 2.46, 0.66285};
+  box.runge_length_m = 0.28;
+  box.runge_stations_m = {-2.0, 0.0, 2.0};
+  return box;
+}
+
+}  // namespace
+
+TEST(CollisionSceneVehicleBox, EmittedOnceWithTheReservedIdAndStructural) {
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWith({makeObject("block_ok", PlanningSceneObject::SOURCE_BLOCK)}),
+    mountingBaseFromWorld(), configuredVehicleBox());
+
+  ASSERT_EQ(converted.scene.primitives.size(), 2u);
+  EXPECT_TRUE(converted.dropped.empty());
+
+  std::size_t truck_count = 0;
+  for (const auto & primitive : converted.scene.primitives) {
+    truck_count += primitive.id == cbpwm::kReservedTruckId ? 1u : 0u;
+  }
+  EXPECT_EQ(truck_count, 1u);
+
+  const auto & truck = converted.scene.primitives[0];
+  EXPECT_EQ(truck.id, std::string(cbpwm::kReservedTruckId));
+  EXPECT_TRUE(truck.structural);
+  EXPECT_EQ(truck.shape, crane_msgs::msg::CollisionScene::SHAPE_BOX);
+  // Reaches the planner in K0_mounting_base, one metre back along x like every other primitive.
+  EXPECT_DOUBLE_EQ(truck.pose.position.x, -4.512);
+  EXPECT_DOUBLE_EQ(truck.pose.position.y, 0.35);
+  EXPECT_DOUBLE_EQ(truck.pose.position.z, 0.235575);
+  // Full extents, carried across unchanged: x along the bed, z up.
+  EXPECT_DOUBLE_EQ(truck.dimensions.x, 6.594);
+  EXPECT_DOUBLE_EQ(truck.dimensions.y, 2.46);
+  EXPECT_DOUBLE_EQ(truck.dimensions.z, 0.66285);
+}
+
+TEST(ShippedWorldModelConfig, DescribesTheVehicleInExactlyOnePlace) {
+  const YAML::Node root = YAML::LoadFile(CBP_WORLD_MODEL_CONFIG_PATH);
+  const YAML::Node world_model =
+    root["world_model_node"]["ros__parameters"]["world_model"];
+  ASSERT_TRUE(world_model);
+
+  // The three former truck entries are gone from the static-object stream, so the only truck
+  // that can reach the planner is the reserved primitive below.
+  const YAML::Node statistics = YAML::Load(world_model["static_scene_objects"].as<std::string>(""));
+  for (std::size_t idx = 0; statistics && idx < statistics.size(); ++idx) {
+    const std::string id = statistics[idx]["id"].as<std::string>("");
+    EXPECT_NE(id, "truck_main");
+    EXPECT_NE(id, "truck_rear");
+    EXPECT_NE(id, "truck_bed");
+  }
+
+  const YAML::Node vehicle_box = world_model["vehicle_box"];
+  ASSERT_TRUE(vehicle_box);
+  EXPECT_TRUE(vehicle_box["enable"].as<bool>(false));
+
+  // And it is a box the planner will accept: every configured station carries its runge on the
+  // configured bed.
+  cbpwm::VehicleBoxConfig box;
+  box.enabled = true;
+  box.frame_id = vehicle_box["frame_id"].as<std::string>("world");
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    box.position[axis] = vehicle_box["position"][axis].as<double>();
+    box.dimensions[axis] = vehicle_box["dimensions"][axis].as<double>();
+    box.rpy_deg[axis] = vehicle_box["rpy_deg"][axis].as<double>();
+  }
+  box.runge_length_m = vehicle_box["runge_length_m"].as<double>(0.0);
+  for (const auto & station : vehicle_box["runge_stations_m"]) {
+    box.runge_stations_m.push_back(station.as<double>());
+  }
+
+  const auto converted = cbpwm::toCollisionScene(sceneWith({}), mountingBaseFromWorld(), box);
+  EXPECT_TRUE(converted.dropped.empty());
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, std::string(cbpwm::kReservedTruckId));
+  EXPECT_TRUE(converted.scene.primitives[0].structural);
+}
+
+TEST(CollisionSceneVehicleBox, DisabledEmitsNothingAndReportsNothing) {
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWith({makeObject("block_ok", PlanningSceneObject::SOURCE_BLOCK)}),
+    mountingBaseFromWorld(), cbpwm::VehicleBoxConfig{});
+
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
+  EXPECT_TRUE(converted.dropped.empty());
+}
+
+TEST(CollisionSceneVehicleBox, ARungeOffTheEndOfTheBedIsReportedNotEmitted) {
+  auto too_short = configuredVehicleBox();
+  // 2.0 m from the centre plus half a 0.28 m runge needs 4.28 m of bed; this one has 4.0.
+  too_short.dimensions[0] = 4.0;
+
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWith({makeObject("block_ok", PlanningSceneObject::SOURCE_BLOCK)}),
+    mountingBaseFromWorld(), too_short);
+
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
+  ASSERT_EQ(converted.dropped.size(), 1u);
+  // Both numbers are named, as the planner's own refusal names them.
+  EXPECT_NE(converted.dropped[0].find("2.000 m"), std::string::npos);
+  EXPECT_NE(converted.dropped[0].find("4.000 m"), std::string::npos);
+}
+
+TEST(CollisionSceneVehicleBox, ABoxJustLongEnoughForTheOutermostStationIsEmitted) {
+  auto exact = configuredVehicleBox();
+  exact.dimensions[0] = 4.28;
+
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWith({}), mountingBaseFromWorld(), exact);
+
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, std::string(cbpwm::kReservedTruckId));
+  EXPECT_TRUE(converted.dropped.empty());
+}
+
+TEST(CollisionSceneVehicleBox, ReportsAnUnusableBoxRatherThanEmittingIt) {
+  auto no_extent = configuredVehicleBox();
+  no_extent.dimensions[2] = 0.0;
+  auto not_finite = configuredVehicleBox();
+  not_finite.position[1] = std::numeric_limits<double>::quiet_NaN();
+  auto elsewhere = configuredVehicleBox();
+  elsewhere.frame_id = "camera_link";
+
+  for (const auto & box : {no_extent, not_finite, elsewhere}) {
+    const auto converted = cbpwm::toCollisionScene(
+      sceneWith({makeObject("block_ok", PlanningSceneObject::SOURCE_BLOCK)}),
+      mountingBaseFromWorld(), box);
+
+    ASSERT_EQ(converted.scene.primitives.size(), 1u);
+    EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
+    ASSERT_EQ(converted.dropped.size(), 1u);
+    EXPECT_EQ(converted.dropped[0].rfind(cbpwm::kReservedTruckId, 0), 0u);
+  }
 }

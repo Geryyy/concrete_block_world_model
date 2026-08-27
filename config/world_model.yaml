@@ -40,22 +40,53 @@ world_model_node:
         #   frame_id: world
         #   position: [-1.361500, -0.952500, 1.097000]
         #   dimensions: [0.140000, 0.152500, 1.060000]
-        - id: truck_main
-          frame_id: world
-          position: [-7.384000, 0.350000, 0.563000]
-          dimensions: [1.150000, 1.455000, 1.844000]
-        - id: truck_rear
-          frame_id: world
-          position: [-0.315000, 0.350000, -0.334500]
-          dimensions: [0.200000, 2.460000, 0.846500]
-        - id: truck_bed
-          frame_id: world
-          position: [-3.158000, 0.350000, -0.548150]
-          dimensions: [3.158000, 1.255000, 0.662850]
+        # The truck is NOT a static scene object -- see world_model.vehicle_box below. It used to
+        # be three of them (truck_main / truck_rear / truck_bed) and they carried no notion of a
+        # vehicle pose; the planner needs the vehicle as one primitive it can expand.
         # - id: slewing_column
         #   frame_id: world
         #   position: [0.000000, 0.000000, 1.212500]
         #   dimensions: [0.450000, 0.650000, 1.512500]
+
+      # ---- The vehicle the crane is bolted to ----
+      # Emitted into the collision scene as the single primitive with the id
+      # `truck`, which crane_msgs reserves (ros2_interfaces 6). The planner
+      # expands it into a bed slab at the box's top face and the six runges of
+      # trajectory_planning 4.2 standing on that face, every piece structural.
+      #
+      # So this box is the LOAD AREA, whose top face is the bed surface -- not
+      # the whole vehicle silhouette. The crane is bolted to the front of the
+      # vehicle, so checking its mounting base against a box that reached the
+      # ground would report the crane colliding with the truck it is part of.
+      # Only the slab above the top face becomes an obstacle.
+      #
+      # The pose is a static configured value, not a measurement. That is the
+      # accepted interim: it is the seam a vehicle-pose estimator later replaces,
+      # with no planner change, because the planner keys every expanded piece to
+      # whatever pose the primitive carries.
+      vehicle_box:
+        enable: true
+        frame_id: world
+        # Reconstructed from the three static truck boxes this entry replaced:
+        #   x  behind the cab (truck_main's rear face, -6.809) to the tail beam's
+        #      rear face (truck_rear, -0.215) -> 6.594 long, centred at -3.512.
+        #      It spans every legacy post station (-5.558 .. -1.3615).
+        #   y  the tail beam's width, which is the vehicle's: 2.460 at 0.350.
+        #   z  the former truck_bed's height, 0.662850, with its TOP FACE at the
+        #      bed surface 0.567 -- the height the legacy posts stand from
+        #      (1.097 - 1.060/2) -> centre 0.235575.
+        position: [-3.512000, 0.350000, 0.235575]
+        rpy_deg: [0.0, 0.0, 0.0]
+        # Full extents per axis, never half-extents: x along the bed, z up.
+        dimensions: [6.594000, 2.460000, 0.662850]
+        # Check only, no geometry is emitted from these two. crane_planning owns
+        # the runge model (`truck.runge_dimensions`, `truck.runge_stations`) and
+        # refuses a scene whose bed is too short to carry a station. These mirror
+        # its defaults so the mismatch is reported here, where the box is
+        # configured, instead of arriving as a refused scene. Keep them equal to
+        # the planner's, or set runge_stations_m to [] to turn the check off.
+        runge_length_m: 0.28
+        runge_stations_m: [-2.0, 0.0, 2.0]
 
       # ---- Overlap-merge of duplicate detections (one-shot scene discovery) ----
       # Collapses strongly-overlapping detection boxes on the same block into a

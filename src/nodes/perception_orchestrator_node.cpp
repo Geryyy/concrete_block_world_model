@@ -119,6 +119,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_block_roi_cfg_.use_black_bg = startup.refine_block_use_black_bg;
     refine_block_roi_cfg_.blur_kernel_size = startup.refine_block_blur_kernel_size;
     block_dimensions_m_ = startup.block_dimensions_m;
+    vehicle_box_ = startup.vehicle_box;
 
     constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
     static_scene_objects_.reserve(startup.static_scene_objects.size());

@@ -173,7 +173,7 @@ void PerceptionOrchestratorNode::publishCollisionScene(const PlanningScene & sce
       return;
     }
 
-    auto converted = cbpwm::toCollisionScene(scene, mounting_base_from_world);
+    auto converted = cbpwm::toCollisionScene(scene, mounting_base_from_world, vehicle_box_);
     for (const auto & dropped : converted.dropped) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,

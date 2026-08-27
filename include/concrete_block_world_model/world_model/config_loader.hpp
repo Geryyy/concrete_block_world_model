@@ -6,6 +6,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 
 namespace cbp::world_model
@@ -88,6 +89,7 @@ struct WorldModelConfig
   std::vector<InitialBlockConfig> initial_blocks;
   std::string static_scene_objects_yaml{};
   std::vector<StaticSceneObjectConfig> static_scene_objects;
+  VehicleBoxConfig vehicle_box;
   std::array<double, 3> block_dimensions_m{0.6, 0.9, 0.6};
 };
 

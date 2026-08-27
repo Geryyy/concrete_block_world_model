@@ -200,6 +200,24 @@ std::vector<InitialBlockConfig> parseInitialBlocksYaml(
   return out;
 }
 
+// A three-element parameter into a fixed triple. A wrong-sized list keeps the struct's defaults
+// on the axes it does not name, and says so, rather than being silently padded with zeros.
+void copyVectorInto(
+  rclcpp::Logger logger,
+  const std::vector<double> & values,
+  const char * param_name,
+  std::array<double, 3> & out)
+{
+  if (values.size() != out.size()) {
+    RCLCPP_WARN(
+      logger, "%s has %zu entries, expected 3; using the defaults for the rest.", param_name,
+      values.size());
+  }
+  for (std::size_t idx = 0; idx < out.size() && idx < values.size(); ++idx) {
+    out[idx] = values[idx];
+  }
+}
+
 std::vector<StaticSceneObjectConfig> parseStaticSceneObjectsYaml(
   rclcpp::Logger logger,
   const std::string & world_frame,
@@ -424,6 +442,35 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     node.declare_parameter<std::string>("world_model.initial_blocks", "");
   cfg.static_scene_objects_yaml =
     node.declare_parameter<std::string>("world_model.static_scene_objects", "");
+
+  // The vehicle the crane is bolted to, described in exactly one place and emitted as the
+  // reserved `truck` primitive. Off by default so a deployment that has not measured its truck
+  // publishes no vehicle at all rather than a guessed one.
+  cfg.vehicle_box.enabled = node.declare_parameter<bool>("world_model.vehicle_box.enable", false);
+  cfg.vehicle_box.frame_id =
+    node.declare_parameter<std::string>("world_model.vehicle_box.frame_id", cfg.world_frame);
+  if (cfg.vehicle_box.frame_id.empty()) {
+    cfg.vehicle_box.frame_id = cfg.world_frame;
+  }
+  copyVectorInto(
+    node.get_logger(),
+    node.declare_parameter<std::vector<double>>(
+      "world_model.vehicle_box.position", {0.0, 0.0, 0.0}),
+    "world_model.vehicle_box.position", cfg.vehicle_box.position);
+  copyVectorInto(
+    node.get_logger(),
+    node.declare_parameter<std::vector<double>>("world_model.vehicle_box.rpy_deg", {0.0, 0.0, 0.0}),
+    "world_model.vehicle_box.rpy_deg", cfg.vehicle_box.rpy_deg);
+  copyVectorInto(
+    node.get_logger(),
+    node.declare_parameter<std::vector<double>>(
+      "world_model.vehicle_box.dimensions", {0.0, 0.0, 0.0}),
+    "world_model.vehicle_box.dimensions", cfg.vehicle_box.dimensions);
+  cfg.vehicle_box.runge_length_m =
+    node.declare_parameter<double>("world_model.vehicle_box.runge_length_m", 0.0);
+  cfg.vehicle_box.runge_stations_m = node.declare_parameter<std::vector<double>>(
+    "world_model.vehicle_box.runge_stations_m", std::vector<double>{});
+
   const auto block_dimensions =
     node.declare_parameter<std::vector<double>>("world_model.block_dimensions_m", {0.6, 0.9, 0.6});
   for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size() && idx < block_dimensions.size();
@@ -529,6 +576,15 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
     RCLCPP_INFO(
       logger, "Configured %zu static planning-scene objects for startup.",
       cfg.static_scene_objects.size());
+  }
+  if (cfg.vehicle_box.enabled) {
+    RCLCPP_INFO(
+      logger,
+      "Vehicle box configured in frame '%s': centre [%.3f %.3f %.3f], extent [%.3f %.3f %.3f]; "
+      "it leaves the world model as the reserved 'truck' primitive.",
+      cfg.vehicle_box.frame_id.c_str(),
+      cfg.vehicle_box.position[0], cfg.vehicle_box.position[1], cfg.vehicle_box.position[2],
+      cfg.vehicle_box.dimensions[0], cfg.vehicle_box.dimensions[1], cfg.vehicle_box.dimensions[2]);
   }
 }
 

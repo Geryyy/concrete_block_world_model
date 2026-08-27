@@ -82,6 +82,32 @@ struct CollisionSceneConversion
   std::vector<std::string> dropped;
 };
 
+// The vehicle the crane is bolted to, as one configured box: pose at the vehicle's centre,
+// `dimensions` its extent in its own axes with x along the bed and z up. It leaves the world
+// model as the single primitive with the reserved id `truck`, which the planner expands into a
+// bed slab at the box's top face and the six runges of trajectory_planning 4.2 standing on it.
+// Publishing the vehicle as ordinary boxes instead would lose the runges and would report the
+// mounting base colliding with the vehicle it is part of.
+//
+// `pose` is a static configured value and not a measurement -- the seam a vehicle-pose estimator
+// later replaces, with no planner change, because the planner keys every expanded piece to
+// whatever pose the primitive carries.
+struct VehicleBoxConfig
+{
+  bool enabled{false};
+  std::string frame_id{};
+  std::array<double, 3> position{0.0, 0.0, 0.0};
+  std::array<double, 3> rpy_deg{0.0, 0.0, 0.0};
+  std::array<double, 3> dimensions{0.0, 0.0, 0.0};
+  // Check only, no geometry: `crane_planning` owns the runge model and refuses a scene whose bed
+  // is too short for it. These two mirror its `truck.runge_dimensions` x component and its
+  // `truck.runge_stations`, so a box that does not fit is reported where it is configured
+  // instead of arriving at the planner as a refused scene. A non-positive length or an empty
+  // station list turns the check off.
+  double runge_length_m{0.0};
+  std::vector<double> runge_stations_m{};
+};
+
 // Convert a planning-scene snapshot into the planner's collision scene, in the frame the given
 // transform targets (`K0_mounting_base`; ros2_interfaces 4). Pure: no node, no clock, no graph.
 //
@@ -95,8 +121,15 @@ struct CollisionSceneConversion
 // non-finite extent, a pose that is not finite or whose quaternion has no usable direction, and
 // an object in a frame the transform does not come from. Repaired rather than dropped: a
 // finite, non-zero quaternion that is not unit length is normalized.
+//
+// `vehicle_box`, when enabled, is emitted first as the reserved `truck` primitive, `structural`
+// and outside the object stream -- the object stream drops that id, and this is the one thing
+// allowed to carry it. A vehicle box that cannot be emitted is reported in `dropped` rather than
+// emitted silently: a bad frame, a non-positive or non-finite extent, an unusable pose, or a
+// runge station that the configured bed is too short to carry.
 CollisionSceneConversion toCollisionScene(
   const concrete_block_world_model_interfaces::msg::PlanningScene & planning_scene,
-  const geometry_msgs::msg::TransformStamped & mounting_base_from_world);
+  const geometry_msgs::msg::TransformStamped & mounting_base_from_world,
+  const VehicleBoxConfig & vehicle_box = VehicleBoxConfig{});
 
 }  // namespace cbp::world_model

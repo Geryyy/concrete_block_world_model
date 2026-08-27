@@ -3,6 +3,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -78,6 +80,91 @@ bool normalizedPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::P
   out.orientation.y /= norm;
   out.orientation.z /= norm;
   out.orientation.w /= norm;
+  return true;
+}
+
+// Metres the way crane_planning writes them in its refusals, so the two messages read alike.
+std::string metres(double value)
+{
+  std::ostringstream text;
+  text << std::fixed << std::setprecision(3) << value << " m";
+  return text.str();
+}
+
+// The configured vehicle box as the reserved `truck` primitive, in the frame the transform
+// targets. Returns false and fills `report` when the box must not be emitted.
+bool truckPrimitiveFromVehicleBox(
+  const VehicleBoxConfig & vehicle_box,
+  const geometry_msgs::msg::TransformStamped & mounting_base_from_world,
+  crane_msgs::msg::CollisionPrimitive & primitive,
+  std::string & report)
+{
+  const std::string & source_frame = mounting_base_from_world.child_frame_id;
+  if (!vehicle_box.frame_id.empty() && vehicle_box.frame_id != source_frame) {
+    report = "the vehicle box is in frame '" + vehicle_box.frame_id +
+      "' and the transform comes from '" + source_frame + "'";
+    return false;
+  }
+
+  geometry_msgs::msg::Vector3 dimensions;
+  dimensions.x = vehicle_box.dimensions[0];
+  dimensions.y = vehicle_box.dimensions[1];
+  dimensions.z = vehicle_box.dimensions[2];
+  if (!hasPositiveExtent(dimensions)) {
+    report = "the vehicle box has no finite, positive extent along every axis";
+    return false;
+  }
+
+  geometry_msgs::msg::Pose configured;
+  configured.position.x = vehicle_box.position[0];
+  configured.position.y = vehicle_box.position[1];
+  configured.position.z = vehicle_box.position[2];
+  for (const double angle : vehicle_box.rpy_deg) {
+    if (!std::isfinite(angle)) {
+      report = "the vehicle box orientation is not finite";
+      return false;
+    }
+  }
+  constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+  tf2::Quaternion quaternion;
+  quaternion.setRPY(
+    vehicle_box.rpy_deg[0] * kDegToRad,
+    vehicle_box.rpy_deg[1] * kDegToRad,
+    vehicle_box.rpy_deg[2] * kDegToRad);
+  configured.orientation.x = quaternion.x();
+  configured.orientation.y = quaternion.y();
+  configured.orientation.z = quaternion.z();
+  configured.orientation.w = quaternion.w();
+
+  geometry_msgs::msg::Pose normalized;
+  if (!normalizedPose(configured, normalized)) {
+    report = "the vehicle box pose is not finite or its quaternion has no direction";
+    return false;
+  }
+
+  // The planner refuses a station that hangs a runge off the end of the bed, naming both
+  // numbers. A box that trips that is a model of a different vehicle, so it is reported here --
+  // where the box is configured -- instead of blanking the whole scene at the planner.
+  if (vehicle_box.runge_length_m > 0.0 && !vehicle_box.runge_stations_m.empty()) {
+    for (std::size_t station = 0; station < vehicle_box.runge_stations_m.size(); ++station) {
+      const double x = vehicle_box.runge_stations_m[station];
+      if (!std::isfinite(x) ||
+        std::abs(x) + 0.5 * vehicle_box.runge_length_m > 0.5 * dimensions.x)
+      {
+        report = "runge station " + std::to_string(station) + " sits at " + metres(x) +
+          " from the centre of a bed " + metres(dimensions.x) +
+          " long, so the runge would hang off the end of it";
+        return false;
+      }
+    }
+  }
+
+  primitive.id = kReservedTruckId;
+  primitive.shape = crane_msgs::msg::CollisionScene::SHAPE_BOX;
+  tf2::doTransform(normalized, primitive.pose, mounting_base_from_world);
+  primitive.dimensions = dimensions;
+  // From a model, never perceived: this is the truck model of trajectory_planning 4.2.
+  primitive.structural = true;
   return true;
 }
 
@@ -574,16 +661,29 @@ const char kReservedTruckId[] = "truck";
 
 CollisionSceneConversion toCollisionScene(
   const concrete_block_world_model_interfaces::msg::PlanningScene & planning_scene,
-  const geometry_msgs::msg::TransformStamped & mounting_base_from_world)
+  const geometry_msgs::msg::TransformStamped & mounting_base_from_world,
+  const VehicleBoxConfig & vehicle_box)
 {
   CollisionSceneConversion out;
   out.scene.header.stamp = planning_scene.header.stamp;
   out.scene.header.frame_id = mounting_base_from_world.header.frame_id;
-  out.scene.primitives.reserve(planning_scene.objects.size());
+  out.scene.primitives.reserve(planning_scene.objects.size() + 1U);
 
   const std::string & source_frame = mounting_base_from_world.child_frame_id;
   std::vector<std::string> seen_ids;
   seen_ids.reserve(planning_scene.objects.size());
+
+  // The vehicle first, and outside the loop below: the object stream drops the reserved id, and
+  // the configured box is the one thing allowed to carry it.
+  if (vehicle_box.enabled) {
+    crane_msgs::msg::CollisionPrimitive truck;
+    std::string report;
+    if (truckPrimitiveFromVehicleBox(vehicle_box, mounting_base_from_world, truck, report)) {
+      out.scene.primitives.push_back(std::move(truck));
+    } else {
+      out.dropped.push_back(std::string(kReservedTruckId) + ": " + report);
+    }
+  }
 
   for (const auto & object : planning_scene.objects) {
     const std::string named = object.id.empty() ? std::string("<no id>") : object.id;

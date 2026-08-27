@@ -118,6 +118,11 @@ if(BUILD_TESTING)
       vision_msgs
       visualization_msgs
     )
+    # The shipped config is an oracle here: the vehicle has to be described in exactly one place,
+    # which is a claim about the file and not about any function.
+    target_compile_definitions(test_world_model_utils PRIVATE
+      CBP_WORLD_MODEL_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/world_model.yaml")
+    target_link_libraries(test_world_model_utils yaml-cpp)
   endif()
 
 endif()

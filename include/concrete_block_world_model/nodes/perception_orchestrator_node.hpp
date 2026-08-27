@@ -393,6 +393,9 @@ private:
   std::string object_class_;
   std::string world_frame_{"world"};
   std::vector<PlanningSceneObject> static_scene_objects_;
+  // The vehicle is not a static scene object: it leaves as the reserved `truck` primitive, which
+  // the object stream refuses, and it never enters the planning-scene snapshot.
+  cbp::world_model::VehicleBoxConfig vehicle_box_;
   std::array<double, 3> block_dimensions_m_{0.6, 0.9, 0.6};
   RuntimeConfig runtime_cfg_;
   std::atomic<bool> debug_detection_overlay_enabled_{true};
