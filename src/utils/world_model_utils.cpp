@@ -1,12 +1,15 @@
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <geometry_msgs/msg/point.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
@@ -26,6 +29,56 @@ builtin_interfaces::msg::Duration markerLifetime(double seconds)
   lifetime.nanosec =
     static_cast<uint32_t>((seconds - static_cast<double>(lifetime.sec)) * 1'000'000'000.0);
   return lifetime;
+}
+
+// The snapshot's shape enumerator as the planner's. The two lists share the numeric value of a
+// box, and the conversion is written out rather than cast so that a shape either message adds
+// later becomes a dropped primitive here instead of whatever the cast landed on.
+bool collisionShapeFromPlanningScene(uint8_t shape_type, uint8_t & shape)
+{
+  if (shape_type == PlanningSceneObject::SHAPE_BOX) {
+    shape = crane_msgs::msg::CollisionScene::SHAPE_BOX;
+    return true;
+  }
+  return false;
+}
+
+// `dimensions` is the full extent per axis in both messages -- never a half-extent and never a
+// radius -- so a zero anywhere is a primitive with no thickness rather than a shorthand.
+bool hasPositiveExtent(const geometry_msgs::msg::Vector3 & dimensions)
+{
+  const std::array<double, 3> axes{dimensions.x, dimensions.y, dimensions.z};
+  for (const double extent : axes) {
+    if (!std::isfinite(extent) || extent <= 0.0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// A pose the planner will accept, with a non-unit quaternion repaired rather than dropped.
+bool normalizedPose(const geometry_msgs::msg::Pose & pose, geometry_msgs::msg::Pose & out)
+{
+  const std::array<double, 7> values{
+    pose.position.x, pose.position.y, pose.position.z,
+    pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w};
+  for (const double value : values) {
+    if (!std::isfinite(value)) {
+      return false;
+    }
+  }
+  const double norm = std::sqrt(
+    pose.orientation.x * pose.orientation.x + pose.orientation.y * pose.orientation.y +
+    pose.orientation.z * pose.orientation.z + pose.orientation.w * pose.orientation.w);
+  if (!(norm > 0.0)) {
+    return false;
+  }
+  out = pose;
+  out.orientation.x /= norm;
+  out.orientation.y /= norm;
+  out.orientation.z /= norm;
+  out.orientation.w /= norm;
+  return true;
 }
 
 // Axis-aligned box in image pixels, used for detection overlap tests.
@@ -514,6 +567,76 @@ visualization_msgs::msg::MarkerArray buildGoalMarkers(
   }
 
   return ma;
+}
+
+const char kReservedPayloadId[] = "payload";
+const char kReservedTruckId[] = "truck";
+
+CollisionSceneConversion toCollisionScene(
+  const concrete_block_world_model_interfaces::msg::PlanningScene & planning_scene,
+  const geometry_msgs::msg::TransformStamped & mounting_base_from_world)
+{
+  CollisionSceneConversion out;
+  out.scene.header.stamp = planning_scene.header.stamp;
+  out.scene.header.frame_id = mounting_base_from_world.header.frame_id;
+  out.scene.primitives.reserve(planning_scene.objects.size());
+
+  const std::string & source_frame = mounting_base_from_world.child_frame_id;
+  std::vector<std::string> seen_ids;
+  seen_ids.reserve(planning_scene.objects.size());
+
+  for (const auto & object : planning_scene.objects) {
+    const std::string named = object.id.empty() ? std::string("<no id>") : object.id;
+
+    if (object.id.empty()) {
+      out.dropped.push_back(named + ": an object with no id -- the planner needs one to name it");
+      continue;
+    }
+    if (object.id == kReservedPayloadId || object.id == kReservedTruckId) {
+      out.dropped.push_back(named + ": the id is reserved by crane_msgs and refuses the scene");
+      continue;
+    }
+    if (std::find(seen_ids.begin(), seen_ids.end(), object.id) != seen_ids.end()) {
+      out.dropped.push_back(named + ": the id arrived twice");
+      continue;
+    }
+    if (!object.frame_id.empty() && object.frame_id != source_frame) {
+      out.dropped.push_back(
+        named + ": it is in frame '" + object.frame_id + "' and the transform comes from '" +
+        source_frame + "'");
+      continue;
+    }
+    uint8_t shape = 0;
+    if (!collisionShapeFromPlanningScene(object.shape_type, shape)) {
+      out.dropped.push_back(
+        named + ": shape " + std::to_string(static_cast<int>(object.shape_type)) +
+        " is none the planner enumerates");
+      continue;
+    }
+    if (!hasPositiveExtent(object.dimensions)) {
+      out.dropped.push_back(named + ": no finite, positive extent along every axis");
+      continue;
+    }
+    geometry_msgs::msg::Pose normalized;
+    if (!normalizedPose(object.pose, normalized)) {
+      out.dropped.push_back(named + ": the pose is not finite or its quaternion has no direction");
+      continue;
+    }
+
+    crane_msgs::msg::CollisionPrimitive primitive;
+    primitive.id = object.id;
+    primitive.shape = shape;
+    tf2::doTransform(normalized, primitive.pose, mounting_base_from_world);
+    primitive.dimensions = object.dimensions;
+    // `structural` is "from a model" as against "perceived" (ros2_interfaces 6), which is
+    // exactly the static-obstacle / block distinction the snapshot already carries.
+    primitive.structural = object.source_type == PlanningSceneObject::SOURCE_STATIC_OBSTACLE;
+
+    seen_ids.push_back(object.id);
+    out.scene.primitives.push_back(std::move(primitive));
+  }
+
+  return out;
 }
 
 }  // namespace cbp::world_model

@@ -243,6 +243,12 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "block_world_model_markers", marker_qos);
     goal_marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       "block_goal_markers", marker_qos);
+    // The contract QoS and the contract name (ros2_interfaces 4): reliable, keep-last-one,
+    // transient-local, so a planner that starts later still gets the latched scene. The name is
+    // absolute because this node runs under its own namespace and the topic is /crane's.
+    collision_scene_pub_ = create_publisher<crane_msgs::msg::CollisionScene>(
+      "/crane/collision_scene",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
     image_sub_.subscribe(this, "image");
     if (scene_discovery_overlay_enabled_ || scene_discovery_capture_enabled_) {

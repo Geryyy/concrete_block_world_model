@@ -8,6 +8,10 @@
 namespace
 {
 
+// The frame the planner plans in and the only one it accepts a scene in
+// (wiki/nomenclature.md 3, wiki/implementation/ros2_interfaces.md 4).
+constexpr char kMountingBaseFrame[] = "K0_mounting_base";
+
 geometry_msgs::msg::Vector3 toVector3(const std::array<double, 3> & values)
 {
   geometry_msgs::msg::Vector3 out;
@@ -144,6 +148,56 @@ PlanningScene PerceptionOrchestratorNode::buildPlanningSceneSnapshot(
       scene.objects.push_back(std::move(object));
     }
     return scene;
+  }
+
+void PerceptionOrchestratorNode::publishCollisionScene(const PlanningScene & scene)
+  {
+    if (!collision_scene_pub_ || !tf_buffer_) {
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped mounting_base_from_world;
+    try {
+      mounting_base_from_world = tf_buffer_->lookupTransform(
+        kMountingBaseFrame,
+        scene.header.frame_id,
+        tf2::TimePointZero,
+        tf2::durationFromSec(0.2));
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "No collision scene published: cannot transform %s to %s: %s",
+        scene.header.frame_id.c_str(),
+        kMountingBaseFrame,
+        ex.what());
+      return;
+    }
+
+    auto converted = cbpwm::toCollisionScene(scene, mounting_base_from_world);
+    for (const auto & dropped : converted.dropped) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Collision scene: dropped %s", dropped.c_str());
+    }
+
+    // The stamp moves on every snapshot and the planner never reads it, so the comparison is
+    // over the primitives and the frame -- otherwise every republish would be a "change".
+    if (collision_scene_published_ &&
+      last_collision_scene_.header.frame_id == converted.scene.header.frame_id &&
+      last_collision_scene_.primitives == converted.scene.primitives)
+    {
+      return;
+    }
+
+    collision_scene_pub_->publish(converted.scene);
+    last_collision_scene_ = converted.scene;
+    collision_scene_published_ = true;
+    RCLCPP_INFO(
+      get_logger(),
+      "Published collision scene: primitives=%zu dropped=%zu frame=%s",
+      converted.scene.primitives.size(),
+      converted.dropped.size(),
+      converted.scene.header.frame_id.c_str());
   }
 
 void PerceptionOrchestratorNode::recordTiming(int64_t seg_ms, int64_t track_ms, int64_t reg_ms, int64_t total_ms)

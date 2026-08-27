@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(concrete_block_perception_interfaces REQUIRED)
 find_package(concrete_block_world_model_interfaces REQUIRED)
+find_package(crane_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -59,6 +60,7 @@ target_link_libraries(world_model_node
 ament_target_dependencies(world_model_node
   concrete_block_perception_interfaces
   concrete_block_world_model_interfaces
+  crane_msgs
   cv_bridge
   geometry_msgs
   message_filters
@@ -91,6 +93,10 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_copyright_FOUND TRUE)
+  # Formatting is clang-format's, via pre-commit (CLAUDE.md, .pre-commit-config.yaml), and
+  # uncrustify disagrees with it on this package's whole tree -- it would reformat files
+  # clang-format is happy with, and pre-commit would then reformat them back.
+  set(ament_cmake_uncrustify_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 
   ament_add_gtest(test_world_model_utils
@@ -104,7 +110,11 @@ if(BUILD_TESTING)
     )
     ament_target_dependencies(test_world_model_utils
       concrete_block_world_model_interfaces
+      crane_msgs
+      geometry_msgs
       std_msgs
+      tf2
+      tf2_geometry_msgs
       vision_msgs
       visualization_msgs
     )

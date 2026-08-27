@@ -275,10 +275,13 @@ void PerceptionOrchestratorNode::publishPersistentWorld(const std_msgs::msg::Hea
     out.blocks.size(),
     out.header.frame_id.c_str());
   updateLatestWorldCache(out);
+  PlanningScene scene;
   {
     std::lock_guard<std::mutex> lock(latest_planning_scene_mutex_);
     latest_planning_scene_ = buildPlanningSceneSnapshot(out.header, out.blocks);
+    scene = latest_planning_scene_;
   }
+  publishCollisionScene(scene);
   publishWorldMarkers(out.header, out.blocks);
 }
 

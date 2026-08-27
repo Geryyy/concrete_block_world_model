@@ -4,13 +4,16 @@
 #include <string>
 #include <vector>
 
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <vision_msgs/msg/detection2_d.hpp>
 #include <vision_msgs/msg/detection2_d_array.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model_interfaces/msg/planning_scene.hpp"
 #include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
+#include "crane_msgs/msg/collision_scene.hpp"
 
 namespace cbp::world_model
 {
@@ -65,5 +68,35 @@ visualization_msgs::msg::MarkerArray buildGoalMarkers(
   const std::vector<concrete_block_world_model_interfaces::msg::Block> & blocks,
   const std::string & world_frame,
   const std::array<double, 3> & block_dimensions_m);
+
+// Ids crane_msgs reserves (wiki/implementation/ros2_interfaces.md 6). The planner refuses a
+// scene *whole* when it carries `payload`, and reads `truck` as a vehicle pose it expands into
+// bed and runges -- neither is something this world model may emit as an ordinary obstacle.
+extern const char kReservedPayloadId[];
+extern const char kReservedTruckId[];
+
+// Outcome of toCollisionScene: the message plus one line per object that did not make it in.
+struct CollisionSceneConversion
+{
+  crane_msgs::msg::CollisionScene scene;
+  std::vector<std::string> dropped;
+};
+
+// Convert a planning-scene snapshot into the planner's collision scene, in the frame the given
+// transform targets (`K0_mounting_base`; ros2_interfaces 4). Pure: no node, no clock, no graph.
+//
+// `mounting_base_from_world` is the transform as tf2 returns it for
+// lookupTransform(K0_mounting_base, world): header.frame_id is the target frame and becomes the
+// scene's frame, child_frame_id is the frame the objects are expected to be in.
+//
+// Objects are filtered here because the planner refuses a scene whole on any bad primitive, so
+// one bad detection would otherwise blank the entire obstacle set. Dropped: an empty id, an id
+// already seen, a reserved id, a shape the planner has no enumerator for, a non-positive or
+// non-finite extent, a pose that is not finite or whose quaternion has no usable direction, and
+// an object in a frame the transform does not come from. Repaired rather than dropped: a
+// finite, non-zero quaternion that is not unit length is normalized.
+CollisionSceneConversion toCollisionScene(
+  const concrete_block_world_model_interfaces::msg::PlanningScene & planning_scene,
+  const geometry_msgs::msg::TransformStamped & mounting_base_from_world);
 
 }  // namespace cbp::world_model

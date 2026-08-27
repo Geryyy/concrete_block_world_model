@@ -11,6 +11,7 @@
 
   <depend>concrete_block_perception_interfaces</depend>
   <depend>concrete_block_world_model_interfaces</depend>
+  <depend>crane_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
   <depend>message_filters</depend>

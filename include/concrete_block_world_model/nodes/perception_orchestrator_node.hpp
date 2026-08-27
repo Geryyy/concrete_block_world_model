@@ -52,6 +52,7 @@
 #include "concrete_block_world_model_interfaces/srv/set_block_goal.hpp"
 #include "concrete_block_world_model_interfaces/srv/upsert_block.hpp"
 #include "concrete_block_world_model/utils/coarse_pose_utils.hpp"
+#include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/config_loader.hpp"
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 #include "concrete_block_world_model/world_model/scene_discovery_flow.hpp"
@@ -274,6 +275,9 @@ private:
     std::shared_ptr<ClearWorldModelSrv::Response> response);
   void publishWorldMarkers(const std_msgs::msg::Header & header, const std::vector<Block> & blocks);
   void publishPersistentWorld(const std_msgs::msg::Header & header);
+  // Convert the snapshot into K0_mounting_base and latch it on /crane/collision_scene, but only
+  // when it differs from the scene already on the wire.
+  void publishCollisionScene(const PlanningScene & scene);
   void updateTaskMoveBlocksFromFk(const std_msgs::msg::Header & header);
   void publishDetectionOverlay(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
@@ -362,6 +366,7 @@ private:
   rclcpp::Publisher<BlockArray>::SharedPtr world_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr goal_marker_pub_;
+  rclcpp::Publisher<crane_msgs::msg::CollisionScene>::SharedPtr collision_scene_pub_;
   size_t last_published_block_count_{0};
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr det_debug_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr yolo_service_debug_pub_;
@@ -376,6 +381,10 @@ private:
   std::mutex latest_world_mutex_;
   PlanningScene latest_planning_scene_;
   std::mutex latest_planning_scene_mutex_;
+  // The last scene actually put on the wire, so that a republish happens on change and not on a
+  // timer. Transient-local with depth one keeps it available to a planner that starts later.
+  crane_msgs::msg::CollisionScene last_collision_scene_;
+  bool collision_scene_published_{false};
 
   std::atomic<bool> busy_{false};
   std::atomic<uint64_t> dropped_busy_frames_{0};
