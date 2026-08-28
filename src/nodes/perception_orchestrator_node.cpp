@@ -356,14 +356,21 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     marker_refresh_timer_ = create_wall_timer(
       std::chrono::duration<double>(startup.marker_refresh_period_s),
       [this]() {
+        // Unconditional. This timer carries the collision-scene heartbeat, whose whole job is to
+        // keep saying "the world model is alive" on a transient-local topic, so it may not be
+        // conditional on what the world holds. It used to be guarded by "blocks or static
+        // objects", which enumerated the scene's sources and so missed `vehicle_box`: a blockless
+        // site with a configured vehicle published the `truck` primitive once at startup and then
+        // went silent, and clear_world_model stopped the heartbeat on any profile. Enumerating at
+        // all is the bug -- an empty world is a statement too. This is also the retry for a
+        // startup publish lost to the `world` -> K0_mounting_base lookup racing
+        // robot_state_publisher.
         const BlockArray snapshot = latestWorldSnapshot();
-        if (!snapshot.blocks.empty() || !static_scene_objects_.empty()) {
-          std_msgs::msg::Header header;
-          header.stamp = now();
-          header.frame_id =
-            snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
-          publishPersistentWorld(header);
-        }
+        std_msgs::msg::Header header;
+        header.stamp = now();
+        header.frame_id =
+          snapshot.header.frame_id.empty() ? world_frame_ : snapshot.header.frame_id;
+        publishPersistentWorld(header);
       });
 
     initializeSeededWorld(startup);

@@ -308,6 +308,21 @@ TEST(ShippedWorldModelConfig, DescribesTheVehicleInExactlyOnePlace) {
   EXPECT_TRUE(converted.scene.primitives[0].structural);
 }
 
+// A blockless world -- a fresh seed_none profile, or one just cleared through clear_world_model
+// -- still has the vehicle to say, so what the node republishes on the heartbeat is not an empty
+// message. The node-level half of this (that the refresh timer keeps calling at all with no
+// blocks) is the guard removed in perception_orchestrator_node.cpp; only the conversion is
+// reachable offline.
+TEST(CollisionSceneVehicleBox, AWorldWithNoBlocksStillCarriesTheTruck) {
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWith({}), mountingBaseFromWorld(), configuredVehicleBox());
+
+  EXPECT_TRUE(converted.dropped.empty());
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, std::string(cbpwm::kReservedTruckId));
+  EXPECT_EQ(converted.scene.header.frame_id, "K0_mounting_base");
+}
+
 TEST(CollisionSceneVehicleBox, DisabledEmitsNothingAndReportsNothing) {
   const auto converted = cbpwm::toCollisionScene(
     sceneWith({makeObject("block_ok", PlanningSceneObject::SOURCE_BLOCK)}),
