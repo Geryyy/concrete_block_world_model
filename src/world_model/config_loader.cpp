@@ -389,6 +389,8 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 100);
   cfg.marker_refresh_period_s = node.declare_parameter<double>(
     "world_model.marker_refresh_period_s", 0.5);
+  cfg.collision_scene_heartbeat_s = node.declare_parameter<double>(
+    "world_model.collision_scene_heartbeat_s", 2.0);
 
   cfg.refine_grasped_use_fk_roi = node.declare_parameter<bool>("refine_grasped.use_fk_roi", true);
   cfg.refine_grasped_tcp_frame =

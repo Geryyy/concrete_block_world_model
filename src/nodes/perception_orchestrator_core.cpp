@@ -180,18 +180,32 @@ void PerceptionOrchestratorNode::publishCollisionScene(const PlanningScene & sce
         "Collision scene: dropped %s", dropped.c_str());
     }
 
-    // The stamp moves on every snapshot and the planner never reads it, so the comparison is
-    // over the primitives and the frame -- otherwise every republish would be a "change".
-    if (collision_scene_published_ &&
+    // The stamp moves on every snapshot, so the comparison is over the primitives and the frame
+    // -- otherwise every republish would be a "change". The planner *does* read the stamp
+    // (crane_planning issue 096: `max_scene_age`), so suppressing an unchanged scene forever is
+    // not an option: on this transient-local topic a scene published once and then held back is
+    // indistinguishable, at the planner, from a world model that has died. So an unchanged scene
+    // is republished anyway once `collision_scene_heartbeat_s` has passed, and the planner's age
+    // check then means "the world model has stopped" rather than "nothing has moved lately".
+    const rclcpp::Time publish_time = now();
+    const bool unchanged = collision_scene_published_ &&
       last_collision_scene_.header.frame_id == converted.scene.header.frame_id &&
-      last_collision_scene_.primitives == converted.scene.primitives)
-    {
+      last_collision_scene_.primitives == converted.scene.primitives;
+    const bool heartbeat_due = !collision_scene_published_ ||
+      (publish_time - last_collision_scene_publish_).seconds() >= collision_scene_heartbeat_s_;
+    if (unchanged && !heartbeat_due) {
       return;
     }
 
     collision_scene_pub_->publish(converted.scene);
     last_collision_scene_ = converted.scene;
+    last_collision_scene_publish_ = publish_time;
     collision_scene_published_ = true;
+    if (unchanged) {
+      // The heartbeat is not news; logging it at INFO once every two seconds would bury the
+      // changes that are.
+      return;
+    }
     RCLCPP_INFO(
       get_logger(),
       "Published collision scene: primitives=%zu dropped=%zu frame=%s",

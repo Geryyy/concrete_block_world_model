@@ -14,6 +14,13 @@ world_model_node:
       min_update_confidence: 0.25
       # Max distance for selecting an existing block as a refine target.
       refine_target_max_distance_m: 1.2
+      # How long an unchanged /crane/collision_scene may go unrepublished, s. The scene is
+      # published on change; without this it would be published on change *only*, and the topic is
+      # transient-local, so the planner -- which ages it against its own max_scene_age (10 s) --
+      # could not tell a latched scene from a world model that had died. Republishing the same
+      # scene every 2 s makes an unchanged world keep saying so. It rides
+      # marker_refresh_period_s, so it is only honoured to that resolution.
+      collision_scene_heartbeat_s: 2.0
       # Fixed obstacles published with the world markers and planning scene.
       static_scene_objects: |
         # - id: post_right_1

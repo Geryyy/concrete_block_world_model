@@ -62,6 +62,13 @@ struct WorldModelConfig
   bool perf_log_timing_enabled{true};
   int perf_log_every_n_frames{20};
   double marker_refresh_period_s{0.5};
+  // How long an unchanged /crane/collision_scene may go unrepublished, s. The planner ages this
+  // topic against its own `max_scene_age` (crane_planning issue 096) and the subscription is
+  // transient-local, so a scene published once and then suppressed as "unchanged" is
+  // indistinguishable there from a world model that has died. Republishing the same scene on this
+  // period is what makes the age mean "the world model has stopped" rather than "nothing moved".
+  // It rides `marker_refresh_period_s`, so it is only ever honoured to that resolution.
+  double collision_scene_heartbeat_s{2.0};
 
   bool refine_grasped_use_fk_roi{true};
   std::string refine_grasped_tcp_frame{"elastic/K8_tool_center_point"};

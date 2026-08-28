@@ -102,6 +102,7 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     task_move_fk_tracking_enabled_ = startup.task_move_fk_tracking_enabled;
     perf_log_timing_enabled_ = startup.perf_log_timing_enabled;
     perf_log_every_n_frames_ = startup.perf_log_every_n_frames;
+    collision_scene_heartbeat_s_ = startup.collision_scene_heartbeat_s;
     refine_grasped_use_fk_roi_ = startup.refine_grasped_use_fk_roi;
     refine_grasped_tcp_frame_ = startup.refine_grasped_tcp_frame;
     refine_grasped_camera_frame_ = startup.refine_grasped_camera_frame;

@@ -381,10 +381,16 @@ private:
   std::mutex latest_world_mutex_;
   PlanningScene latest_planning_scene_;
   std::mutex latest_planning_scene_mutex_;
-  // The last scene actually put on the wire, so that a republish happens on change and not on a
-  // timer. Transient-local with depth one keeps it available to a planner that starts later.
+  // The last scene actually put on the wire, so that a republish happens on change -- and, past
+  // `collision_scene_heartbeat_s`, on the heartbeat as well. Transient-local with depth one keeps
+  // it available to a planner that starts later, and that is exactly why the heartbeat is needed:
+  // a latched scene that is never republished cannot be told apart, at the planner, from a world
+  // model that has stopped, so the planner ages it (crane_planning `max_scene_age`) and the
+  // heartbeat is what keeps an unchanged world reading as an observed one.
   crane_msgs::msg::CollisionScene last_collision_scene_;
   bool collision_scene_published_{false};
+  rclcpp::Time last_collision_scene_publish_{0, 0, RCL_ROS_TIME};
+  double collision_scene_heartbeat_s_{2.0};
 
   std::atomic<bool> busy_{false};
   std::atomic<uint64_t> dropped_busy_frames_{0};
