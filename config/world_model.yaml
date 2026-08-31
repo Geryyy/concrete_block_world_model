@@ -23,6 +23,17 @@ world_model_node:
       collision_scene_heartbeat_s: 2.0
       # Fixed obstacles published with the world markers and planning scene.
       static_scene_objects: |
+        # Converted out of the legacy K0_mounting_base boxes of
+        # epsilon_crane_bringup_mp/config/motion_planning/collision_objects.yaml,
+        # which collision_body_handler published in K0_mounting_base, not world:
+        #   world = (-6.939 - k0_x, 0.350 - k0_y, 1.141 + k0_z) at the recorded truck pose.
+        # Re-measure them for a real site -- these are the old site's geometry.
+        - id: container
+          position: [-9.439, -10.650, 2.461]
+          dimensions: [7.0, 4.0, 5.0]
+        - id: hedge
+          position: [-6.939, 6.850, 1.461]
+          dimensions: [20.0, 5.0, 3.0]
         # - id: post_right_1
         #   frame_id: world
         #   position: [-5.558000, 1.652500, 1.097000]
@@ -75,17 +86,21 @@ world_model_node:
         enable: true
         frame_id: world
         # Reconstructed from the three static truck boxes this entry replaced:
-        #   x  behind the cab (truck_main's rear face, -6.809) to the tail beam's
-        #      rear face (truck_rear, -0.215) -> 6.594 long, centred at -3.512.
+        #   x  the tail beam's rear face (truck_rear, -0.215) forward to -6.209.
+        #      NOT the cab's rear face (-6.809): the crane's own mounting base --
+        #      collision_mounting_base.stl, the transverse outrigger beam -- reaches
+        #      back to -6.514, so a box starting at -6.809 puts the bed slab inside
+        #      the crane's own K0 body and every goal is refused as in collision.
+        #      -> 5.894 long, centred at -3.162, clearing K0 by 0.19 m.
         #      It spans every legacy post station (-5.558 .. -1.3615).
         #   y  the tail beam's width, which is the vehicle's: 2.460 at 0.350.
         #   z  the former truck_bed's height, 0.662850, with its TOP FACE at the
         #      bed surface 0.567 -- the height the legacy posts stand from
         #      (1.097 - 1.060/2) -> centre 0.235575.
-        position: [-3.512000, 0.350000, 0.235575]
+        position: [-3.162000, 0.350000, 0.235575]
         rpy_deg: [0.0, 0.0, 0.0]
         # Full extents per axis, never half-extents: x along the bed, z up.
-        dimensions: [6.594000, 2.460000, 0.662850]
+        dimensions: [5.894000, 2.460000, 0.662850]
         # Check only, no geometry is emitted from these two. crane_planning owns
         # the runge model (`truck.runge_dimensions`, `truck.runge_stations`) and
         # refuses a scene whose bed is too short to carry a station. These mirror
