@@ -69,8 +69,9 @@ world_model_node:
       # ---- The vehicle the crane is bolted to ----
       # Emitted into the collision scene as the single primitive with the id
       # `truck`, which crane_msgs reserves (ros2_interfaces 6). The planner
-      # expands it into a bed slab at the box's top face and the six runges of
-      # trajectory_planning 4.2 standing on that face, every piece structural.
+      # expands it into a bed slab at the box's top face, the six runges of
+      # trajectory_planning 4.2 standing on that face and the headboard closing
+      # its cab end, every piece structural.
       #
       # So this box is the LOAD AREA, whose top face is the bed surface -- not
       # the whole vehicle silhouette. The crane is bolted to the front of the
@@ -85,30 +86,47 @@ world_model_node:
       vehicle_box:
         enable: true
         frame_id: world
-        # Reconstructed from the three static truck boxes this entry replaced:
-        #   x  the tail beam's rear face (truck_rear, -0.215) forward to -6.209.
-        #      NOT the cab's rear face (-6.809): the crane's own mounting base --
-        #      collision_mounting_base.stl, the transverse outrigger beam -- reaches
-        #      back to -6.514, so a box starting at -6.809 puts the bed slab inside
-        #      the crane's own K0 body and every goal is refused as in collision.
-        #      -> 5.894 long, centred at -3.162, clearing K0 by 0.19 m.
-        #      It spans every legacy post station (-5.558 .. -1.3615).
-        #   y  the tail beam's width, which is the vehicle's: 2.460 at 0.350.
-        #   z  the former truck_bed's height, 0.662850, with its TOP FACE at the
-        #      bed surface 0.567 -- the height the legacy posts stand from
-        #      (1.097 - 1.060/2) -> centre 0.235575.
-        position: [-3.162000, 0.350000, 0.235575]
+        # MEASURED OFF THE DESCRIPTION, in `world`. The values this entry was
+        # first written with came from `collision_bodies_truck_matlab.urdf.xacro`,
+        # which parents every box to `K0_mounting_base` -- and `mounting_on_truck`
+        # puts K0 at world (-6.9385, +0.350, 1.1407) yawed by pi. Copying those
+        # numbers into a `world` entry carried the +0.350 mounting offset into the
+        # bed and both runge rows, so the modelled left runge sat 0.37 m inboard of
+        # the real one and the real one was outside its own obstacle. The numbers
+        # below come from `timber_loader_AIT.urdf.xacro` expanded and read in
+        # `world`, so the frame is the one the field says it is:
+        #   x  the loading deck runs -6.470 .. -0.555. The front face is pulled
+        #      back to -6.109 because the crane's own K0 body -- the fitted box in
+        #      crane_model/config/collision_model.yaml, looser than the mesh --
+        #      reaches back to -6.254, and a bed slab inside K0 refuses every goal.
+        #      -> 5.554 long, centred at -3.332, clearing K0 by 0.145 m.
+        #   y  the deck is 2.510 wide, centred on the vehicle (NOT on the crane).
+        #      2.518 because this box is axis-aligned while the bed carries a
+        #      0.09 deg roll, which throws a runge's outer corner out to 1.259.
+        #   z  the deck surface is at 1.264. Thickness is free -- only the top
+        #      face is used -- so the legacy 0.662850 is kept: centre 0.932575.
+        position: [-3.332000, 0.000000, 0.932575]
         rpy_deg: [0.0, 0.0, 0.0]
         # Full extents per axis, never half-extents: x along the bed, z up.
-        dimensions: [5.894000, 2.460000, 0.662850]
+        dimensions: [5.554000, 2.518000, 0.662850]
         # Check only, no geometry is emitted from these two. crane_planning owns
         # the runge model (`truck.runge_dimensions`, `truck.runge_stations`) and
         # refuses a scene whose bed is too short to carry a station. These mirror
         # its defaults so the mismatch is reported here, where the box is
         # configured, instead of arriving as a refused scene. Keep them equal to
         # the planner's, or set runge_stations_m to [] to turn the check off.
+        #
+        # Stations are offsets from the box centre, and they put the runges at
+        # world x -5.593, -4.381 and -1.397 -- where `lkw_rungen_134.stl` stands
+        # the posts. The world model cannot see the `post_setup` the description
+        # was expanded with, so this is the union of the two that ship:
+        # `post_setup:=134` (crane_bringup/launch/sim.launch.py) and `13`
+        # (concrete_block_behavior_tree, hardware), whose posts are a subset.
+        # `post_setup:=124` adds a fourth at world -2.950 and nothing launches it;
+        # add the station 0.382 here if that ever changes. The previous
+        # [-2.0, 0.0, 2.0] matched no post position at all.
         runge_length_m: 0.28
-        runge_stations_m: [-2.0, 0.0, 2.0]
+        runge_stations_m: [-2.261, -1.049, 1.935]
 
       # ---- Overlap-merge of duplicate detections (one-shot scene discovery) ----
       # Collapses strongly-overlapping detection boxes on the same block into a

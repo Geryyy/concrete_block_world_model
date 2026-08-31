@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <string>
@@ -222,8 +223,9 @@ TEST(CollisionScene, DropsAnObjectTheTransformDoesNotComeFrom) {
 namespace
 {
 
-// The vehicle box the shipped config carries, as the tests need it: a load area long enough for
-// the planner's three runge stations, keyed to the same world frame the transform comes from.
+// A vehicle box for the transform and refusal arithmetic below: a load area long enough for its
+// own three runge stations, keyed to the same world frame the transform comes from. Deliberately
+// NOT the shipped numbers -- `shippedVehicleBox()` is those, and the tests that care read it.
 cbpwm::VehicleBoxConfig configuredVehicleBox()
 {
   cbpwm::VehicleBoxConfig box;
@@ -233,6 +235,27 @@ cbpwm::VehicleBoxConfig configuredVehicleBox()
   box.dimensions = {6.594, 2.46, 0.66285};
   box.runge_length_m = 0.28;
   box.runge_stations_m = {-2.0, 0.0, 2.0};
+  return box;
+}
+
+// The `vehicle_box` the node will actually read, loaded from the shipped config.
+cbpwm::VehicleBoxConfig shippedVehicleBox()
+{
+  const YAML::Node root = YAML::LoadFile(CBP_WORLD_MODEL_CONFIG_PATH);
+  const YAML::Node vehicle_box =
+    root["world_model_node"]["ros__parameters"]["world_model"]["vehicle_box"];
+  cbpwm::VehicleBoxConfig box;
+  box.enabled = vehicle_box["enable"].as<bool>(false);
+  box.frame_id = vehicle_box["frame_id"].as<std::string>("world");
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    box.position[axis] = vehicle_box["position"][axis].as<double>();
+    box.dimensions[axis] = vehicle_box["dimensions"][axis].as<double>();
+    box.rpy_deg[axis] = vehicle_box["rpy_deg"][axis].as<double>();
+  }
+  box.runge_length_m = vehicle_box["runge_length_m"].as<double>(0.0);
+  for (const auto & station : vehicle_box["runge_stations_m"]) {
+    box.runge_stations_m.push_back(station.as<double>());
+  }
   return box;
 }
 
@@ -288,18 +311,7 @@ TEST(ShippedWorldModelConfig, DescribesTheVehicleInExactlyOnePlace) {
 
   // And it is a box the planner will accept: every configured station carries its runge on the
   // configured bed.
-  cbpwm::VehicleBoxConfig box;
-  box.enabled = true;
-  box.frame_id = vehicle_box["frame_id"].as<std::string>("world");
-  for (std::size_t axis = 0; axis < 3; ++axis) {
-    box.position[axis] = vehicle_box["position"][axis].as<double>();
-    box.dimensions[axis] = vehicle_box["dimensions"][axis].as<double>();
-    box.rpy_deg[axis] = vehicle_box["rpy_deg"][axis].as<double>();
-  }
-  box.runge_length_m = vehicle_box["runge_length_m"].as<double>(0.0);
-  for (const auto & station : vehicle_box["runge_stations_m"]) {
-    box.runge_stations_m.push_back(station.as<double>());
-  }
+  const cbpwm::VehicleBoxConfig box = shippedVehicleBox();
 
   const auto converted = cbpwm::toCollisionScene(sceneWith({}), mountingBaseFromWorld(), box);
   EXPECT_TRUE(converted.dropped.empty());
@@ -379,5 +391,68 @@ TEST(CollisionSceneVehicleBox, ReportsAnUnusableBoxRatherThanEmittingIt) {
     EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
     ASSERT_EQ(converted.dropped.size(), 1u);
     EXPECT_EQ(converted.dropped[0].rfind(cbpwm::kReservedTruckId, 0), 0u);
+  }
+}
+
+// The truck, measured in `world` off `epsilon_crane_description`'s
+// `timber_loader_AIT.urdf.xacro` expanded with the description launch's own arguments. The
+// vehicle box is configured, not perceived, so these are what it is configured to model, and
+// getting them in the wrong frame is not a refusal anywhere -- it is a silently displaced
+// obstacle. That is what this test is for: the box was once written in `K0_mounting_base` and
+// declared `world`, which carried `mounting_on_truck`'s +0.350 lateral offset into the bed and
+// both runge rows and left the real left runge outside its own obstacle.
+namespace
+{
+
+constexpr double kDeckSurfaceZ = 1.264;      // top face of the loading deck
+constexpr double kDeckRearX = -0.555;        // rear edge of the deck
+constexpr double kDeckFrontX = -6.470;       // front edge, behind the cab
+constexpr double kDeckOuterY = 1.259;        // outermost deck/runge corner, either side
+// The crane's own K0 body as `crane_model` fits it (config/collision_model.yaml, a box looser
+// than the mesh): a bed slab reaching past this is inside the crane and refuses every goal.
+constexpr double kMountingBaseRearX = -6.254;
+// Where `lkw_rungen_134.stl` stands the posts: `post_setup:=134` in sim, and `13` on hardware
+// stands a subset of the same three. The world model cannot see that argument, so it models the
+// union of the setups that ship. (`124` moves one post to -2.950; nothing launches it.)
+constexpr double kPostX[] = {-5.593, -4.381, -1.397};
+constexpr double kTolerance = 0.01;
+
+}  // namespace
+
+TEST(ShippedWorldModelConfig, TheVehicleBoxIsTheDescriptionsLoadingDeck) {
+  const cbpwm::VehicleBoxConfig box = shippedVehicleBox();
+
+  // Axis-aligned in `world`, so the extents below are world extents.
+  ASSERT_EQ(box.frame_id, "world");
+  for (const double angle : box.rpy_deg) {
+    ASSERT_DOUBLE_EQ(angle, 0.0);
+  }
+
+  // The top face is the deck surface: it is what the bed slab is placed on and what the runges
+  // stand from, so an error here moves every expanded piece vertically.
+  EXPECT_NEAR(box.position[2] + 0.5 * box.dimensions[2], kDeckSurfaceZ, kTolerance);
+
+  // Centred on the vehicle, not on the crane, and wide enough that both runge rows -- which the
+  // planner places flush against this box's edge -- cover the real posts' outer faces.
+  EXPECT_NEAR(box.position[1], 0.0, kTolerance);
+  EXPECT_GE(0.5 * box.dimensions[1], kDeckOuterY);
+
+  // Along the bed: the rear face is the deck's, and the front face stops short of the crane's
+  // own mounting base without modelling deck that is not there.
+  const double rear = box.position[0] + 0.5 * box.dimensions[0];
+  const double front = box.position[0] - 0.5 * box.dimensions[0];
+  EXPECT_NEAR(rear, kDeckRearX, kTolerance);
+  EXPECT_GT(front, kMountingBaseRearX);
+  EXPECT_GE(front, kDeckFrontX);
+
+  // Every post the description stands is a configured station, and every configured station is
+  // a post -- no real runge missing, no phantom runge on free bed.
+  ASSERT_EQ(box.runge_stations_m.size(), sizeof(kPostX) / sizeof(kPostX[0]));
+  for (const double post : kPostX) {
+    bool modelled = false;
+    for (const double station : box.runge_stations_m) {
+      modelled = modelled || std::abs(box.position[0] + station - post) <= kTolerance;
+    }
+    EXPECT_TRUE(modelled) << "no runge station stands at the post at x = " << post;
   }
 }
