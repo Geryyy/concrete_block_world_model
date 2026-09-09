@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include "concrete_block_world_model/utils/img_utils.hpp"

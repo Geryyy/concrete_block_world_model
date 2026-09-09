@@ -1,6 +1,6 @@
 #include "concrete_block_world_model/world_model/refine_flow.hpp"
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/core.hpp>
 #include <rclcpp/rclcpp.hpp>
 

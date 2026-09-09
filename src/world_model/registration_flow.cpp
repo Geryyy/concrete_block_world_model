@@ -2,7 +2,7 @@
 
 #include <limits>
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/img_utils.hpp"
