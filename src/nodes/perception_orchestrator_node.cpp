@@ -113,12 +113,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_grasped_roi_cfg_.use_black_bg = startup.refine_grasped_use_black_bg;
     refine_grasped_roi_cfg_.blur_kernel_size = startup.refine_grasped_blur_kernel_size;
     refine_grasped_pose_fusion_ = startup.refine_grasped_pose_fusion;
-    refine_block_use_pose_roi_ = startup.refine_block_use_pose_roi;
-    refine_block_roi_cfg_.min_depth_m = startup.refine_block_min_depth_m;
-    refine_block_roi_cfg_.max_depth_m = startup.refine_block_max_depth_m;
-    refine_block_roi_cfg_.segmentation_timeout_s = startup.refine_block_segmentation_timeout_s;
-    refine_block_roi_cfg_.use_black_bg = startup.refine_block_use_black_bg;
-    refine_block_roi_cfg_.blur_kernel_size = startup.refine_block_blur_kernel_size;
     block_dimensions_m_ = startup.block_dimensions_m;
     vehicle_box_ = startup.vehicle_box;
 
@@ -232,12 +226,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       get_logger(), startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
     refine_grasped_roi_cfg_.roi_size_y_m = cbpwm::vectorComponent(
       get_logger(), startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
-    refine_block_roi_cfg_.roi_size_x_m =
-      cbpwm::vectorComponent(
-      get_logger(), startup.refine_block_roi_size_m, 0, 1.20, "refine_block.roi_size_m");
-    refine_block_roi_cfg_.roi_size_y_m =
-      cbpwm::vectorComponent(
-      get_logger(), startup.refine_block_roi_size_m, 1, 1.00, "refine_block.roi_size_m");
 
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     const auto marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
@@ -402,16 +390,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
         refine_grasped_pose_fusion_.max_translation_jump_m,
         refine_grasped_pose_fusion_.max_z_delta_m,
         refine_grasped_pose_fusion_.debug_log ? "true" : "false");
-    }
-    if (refine_block_use_pose_roi_) {
-      RCLCPP_INFO(
-        get_logger(),
-        "REFINE_BLOCK pose+ROI enabled | roi_size=[%.2f, %.2f]m depth=[%.2f, %.2f]m seg_timeout=%.2fs",
-        refine_block_roi_cfg_.roi_size_x_m,
-        refine_block_roi_cfg_.roi_size_y_m,
-        refine_block_roi_cfg_.min_depth_m,
-        refine_block_roi_cfg_.max_depth_m,
-        refine_block_roi_cfg_.segmentation_timeout_s);
     }
 }
 

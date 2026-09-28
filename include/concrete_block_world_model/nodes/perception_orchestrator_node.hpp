@@ -41,6 +41,7 @@
 #include "concrete_block_world_model_interfaces/msg/block_array.hpp"
 #include "concrete_block_world_model_interfaces/msg/planning_scene.hpp"
 #include "concrete_block_world_model_interfaces/msg/planning_scene_object.hpp"
+#include "concrete_block_world_model_interfaces/msg/pose_prior.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_coarse_blocks.hpp"
 #include "concrete_block_world_model_interfaces/srv/get_planning_scene.hpp"
 #include "concrete_block_world_model_interfaces/srv/clear_block_goals.hpp"
@@ -63,6 +64,7 @@ using concrete_block_world_model_interfaces::msg::Block;
 using concrete_block_world_model_interfaces::msg::BlockArray;
 using concrete_block_world_model_interfaces::msg::PlanningScene;
 using concrete_block_world_model_interfaces::msg::PlanningSceneObject;
+using concrete_block_world_model_interfaces::msg::PosePrior;
 
 namespace cbpwm = cbp::world_model;
 
@@ -216,18 +218,8 @@ private:
     const std_msgs::msg::Header & header,
     std::string & camera_frame,
     std::string & reason);
-  bool worldPointToCamera(
-    const std_msgs::msg::Header & header,
-    const Eigen::Vector3d & p_world,
-    Eigen::Vector3d & p_camera,
-    std::string & reason);
   cbpwm::RefineFlowRuntime makeRefineFlowRuntime();
   void processRefineGraspedWithFkRoi(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    const OneShotRequest & run_request,
-    const std::chrono::steady_clock::time_point & t_start);
-  bool tryProcessRefineBlockWithPoseRoi(
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
     const OneShotRequest & run_request,
@@ -238,6 +230,20 @@ private:
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response);
   bool runDetectorSceneDiscovery(double timeout_s, RunPoseSrv::Response & response);
+  // Re-measure one already-known block with the same detector. Sends the target's world pose
+  // as the single prior and writes back only the detection that matches it; the block keeps
+  // its id, task status and assembly goal.
+  bool runDetectorRefineBlock(
+    const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response);
+  // Shared detector call for both detector flows. On failure it fills `response` with the
+  // reason and the unchanged world snapshot.
+  bool callDetectorDiscoverBlocks(
+    double timeout_s,
+    std::vector<PosePrior> priors,
+    DiscoverBlocksSrv::Response::SharedPtr & out_detector_response,
+    RunPoseSrv::Response & response);
+  PosePrior makePosePrior(
+    const std::string & source, const geometry_msgs::msg::Pose & pose, double weight) const;
   void cacheSceneDiscoveryImage(const sensor_msgs::msg::Image::ConstSharedPtr msg);
   void cacheSceneDiscoveryCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
   // Persist a detector request before association so a later operator review can
@@ -478,8 +484,6 @@ private:
   // guarded by persistent_world_mutex_.
   std::unordered_map<std::string, Eigen::Matrix4d> task_move_grasp_offsets_;
   cbpwm::RoiInputConfig refine_grasped_roi_cfg_;
-  bool refine_block_use_pose_roi_{false};
-  cbpwm::RoiInputConfig refine_block_roi_cfg_;
   bool scene_discovery_merge_enabled_{true};
   double scene_discovery_min_detector_confidence_{0.25};
   double scene_discovery_association_max_distance_m_{0.45};

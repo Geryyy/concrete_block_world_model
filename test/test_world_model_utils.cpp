@@ -456,3 +456,74 @@ TEST(ShippedWorldModelConfig, TheVehicleBoxIsTheDescriptionsLoadingDeck) {
     EXPECT_TRUE(modelled) << "no runge station stands at the post at x = " << post;
   }
 }
+
+namespace
+{
+
+constexpr double kHalfTurn = 3.14159265358979323846;
+
+Block blockAt(double x, double y, double z, double yaw, float confidence = 0.9F)
+{
+  Block block;
+  block.pose.position.x = x;
+  block.pose.position.y = y;
+  block.pose.position.z = z;
+  block.pose.orientation.z = std::sin(0.5 * yaw);
+  block.pose.orientation.w = std::cos(0.5 * yaw);
+  block.confidence = confidence;
+  return block;
+}
+
+// The window REFINE_BLOCK sends its prior with (scene_discovery.priors.*_tolerance) and the
+// detector confidence floor it accepts observations at.
+constexpr double kTranslationToleranceM = 0.35;
+constexpr double kYawToleranceRad = 0.70;
+constexpr double kMinConfidence = 0.25;
+
+}  // namespace
+
+// REFINE_BLOCK re-measures one placed block. The detector sees the whole scene, so the
+// selection is what keeps the neighbour -- one block pitch away in y -- out of the update.
+TEST(SelectRefineMatch, PicksTheOffsetTargetNotTheNeighbour) {
+  const Block target = blockAt(2.0, 0.0, 0.3, 0.0);
+  const std::vector<Block> detections{
+    blockAt(2.0, 0.9, 0.3, 0.0),       // the neighbour in the wall
+    blockAt(1.75, 0.0, 0.3, 0.0),      // a nearer-but-not-nearest return
+    blockAt(2.08, 0.06, 0.30, 0.05),   // the target, 0.1 m off where the bent crane left it
+  };
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, detections, kTranslationToleranceM, kYawToleranceRad, kMinConfidence), 2);
+}
+
+// No match must leave the world pose alone, so the caller gets -1 rather than a wrong block.
+TEST(SelectRefineMatch, NoMatchInsideTolerance) {
+  const Block target = blockAt(2.0, 0.0, 0.3, 0.0);
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {blockAt(2.0, 0.9, 0.3, 0.0)}, kTranslationToleranceM, kYawToleranceRad,
+      kMinConfidence), -1);
+  // Close enough in translation but turned a quarter turn: another block, not this one.
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {blockAt(2.1, 0.0, 0.3, 0.5 * kHalfTurn)}, kTranslationToleranceM,
+      kYawToleranceRad, kMinConfidence), -1);
+  // Right where the block is, but too weak to be believed: a spurious hypothesis must not
+  // overwrite a pose that was actually measured.
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {blockAt(2.02, 0.0, 0.3, 0.0, 0.05F)}, kTranslationToleranceM, kYawToleranceRad,
+      kMinConfidence), -1);
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {}, kTranslationToleranceM, kYawToleranceRad, kMinConfidence), -1);
+}
+
+// A cuboid turned half a turn fills the same volume, so a flipped return is still the target.
+TEST(SelectRefineMatch, HalfTurnIsTheSameBlock) {
+  const Block target = blockAt(2.0, 0.0, 0.3, 0.0);
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {blockAt(2.05, 0.0, 0.3, kHalfTurn)}, kTranslationToleranceM, kYawToleranceRad,
+      kMinConfidence), 0);
+}

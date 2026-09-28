@@ -97,10 +97,15 @@ if(BUILD_TESTING)
   # uncrustify disagrees with it on this package's whole tree -- it would reformat files
   # clang-format is happy with, and pre-commit would then reformat them back.
   set(ament_cmake_uncrustify_FOUND TRUE)
+  # Same conflict on the Python side: ruff-format (pre-commit) writes double quotes and
+  # flake8's Q000 demands single ones, so every launch file fails a lint nobody can satisfy.
+  # Pyflakes' actual checks are not lost -- pre-commit's ruff-check runs the F rules.
+  set(ament_cmake_flake8_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 
   ament_add_gtest(test_world_model_utils
     test/test_world_model_utils.cpp
+    src/utils/block_utils.cpp
     src/utils/world_model_utils.cpp
   )
   if(TARGET test_world_model_utils)

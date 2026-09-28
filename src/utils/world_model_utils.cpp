@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -13,6 +14,7 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
 namespace cbp::world_model
@@ -23,6 +25,18 @@ using concrete_block_world_model_interfaces::msg::PlanningSceneObject;
 
 namespace
 {
+
+constexpr double kPi = 3.14159265358979323846;
+
+// Yaw of the pose's z-rotation component, the only orientation a block on (roughly) level
+// ground is free in.
+double poseYaw(const geometry_msgs::msg::Pose & pose)
+{
+  const auto & q = pose.orientation;
+  return std::atan2(
+    2.0 * (q.w * q.z + q.x * q.y),
+    1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+}
 
 builtin_interfaces::msg::Duration markerLifetime(double seconds)
 {
@@ -409,6 +423,41 @@ bool shouldAssociateByDistance(
     return false;
   }
   return distance_m <= max_distance_m;
+}
+
+int selectRefineMatch(
+  const Block & target,
+  const std::vector<Block> & observations,
+  double translation_tolerance_m,
+  double yaw_tolerance_rad,
+  double min_confidence)
+{
+  if (!std::isfinite(yaw_tolerance_rad) || yaw_tolerance_rad < 0.0) {
+    return -1;
+  }
+
+  const double target_yaw = poseYaw(target.pose);
+  int best = -1;
+  double best_distance = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < observations.size(); ++i) {
+    const double distance = poseDistance(observations[i].pose, target.pose);
+    if (distance >= best_distance ||
+      !shouldAssociateByDistance(
+        distance, translation_tolerance_m, observations[i].confidence, min_confidence))
+    {
+      continue;
+    }
+    double yaw_delta = std::fmod(std::abs(poseYaw(observations[i].pose) - target_yaw), kPi);
+    if (yaw_delta > 0.5 * kPi) {
+      yaw_delta = kPi - yaw_delta;
+    }
+    if (!std::isfinite(yaw_delta) || yaw_delta > yaw_tolerance_rad) {
+      continue;
+    }
+    best_distance = distance;
+    best = static_cast<int>(i);
+  }
+  return best;
 }
 
 visualization_msgs::msg::MarkerArray buildWorldMarkers(

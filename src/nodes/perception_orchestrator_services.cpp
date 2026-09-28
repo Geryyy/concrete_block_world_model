@@ -19,6 +19,12 @@
 namespace
 {
 
+// Covariance of a two-face detector pose. It is geometry-constrained, not a registration
+// result, so it stays deliberately wider than kPrecisePositionSigmaMinM until replay labels
+// calibrate the detector's measurement uncertainty.
+constexpr double kDetectorPositionSigmaM = 0.05;
+constexpr double kDetectorOrientationSigmaRad = 0.15;
+
 int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
 {
   return static_cast<int64_t>(stamp.sec) * 1000000000LL +
@@ -523,19 +529,68 @@ void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool 
     one_shot_cv_.notify_all();
   }
 
-bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
-    double timeout_s, RunPoseSrv::Response & response)
+PosePrior PerceptionOrchestratorNode::makePosePrior(
+    const std::string & source, const geometry_msgs::msg::Pose & pose, double weight) const
+  {
+    PosePrior prior;
+    prior.source = source;
+    prior.pose = pose;
+    prior.dimensions = block_dimensions_m_;
+    prior.weight = static_cast<float>(weight);
+    prior.translation_tolerance_m =
+      static_cast<float>(scene_discovery_prior_translation_tolerance_m_);
+    prior.orientation_tolerance_rad =
+      static_cast<float>(scene_discovery_prior_orientation_tolerance_rad_);
+    return prior;
+  }
+
+bool PerceptionOrchestratorNode::callDetectorDiscoverBlocks(
+    double timeout_s,
+    std::vector<PosePrior> priors,
+    DiscoverBlocksSrv::Response::SharedPtr & out_detector_response,
+    RunPoseSrv::Response & response)
   {
     const auto service_wait = std::chrono::duration<double>(std::min(timeout_s, 1.0));
     if (!discover_blocks_client_->wait_for_service(service_wait)) {
       response.success = false;
-      response.message = "Detector discovery service '" + detector_discover_service_ + "' is unavailable.";
+      response.message =
+        "Detector discovery service '" + detector_discover_service_ + "' is unavailable.";
       response.blocks = latestWorldSnapshot();
       return false;
     }
 
     auto request = std::make_shared<DiscoverBlocksSrv::Request>();
     request->timeout_s = static_cast<float>(timeout_s);
+    request->priors = std::move(priors);
+    auto future = discover_blocks_client_->async_send_request(request);
+    if (future.wait_for(std::chrono::duration<double>(timeout_s)) != std::future_status::ready) {
+      response.success = false;
+      response.message = "Timed out waiting for the block detector.";
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+
+    try {
+      out_detector_response = future.get();
+    } catch (const std::exception & error) {
+      response.success = false;
+      response.message = std::string("Detector discovery transport failed: ") + error.what();
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+    if (!out_detector_response->success) {
+      response.success = false;
+      response.message = "Detector discovery failed: " + out_detector_response->message;
+      response.blocks = latestWorldSnapshot();
+      return false;
+    }
+    return true;
+  }
+
+bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
+    double timeout_s, RunPoseSrv::Response & response)
+  {
+    std::vector<PosePrior> priors;
     if (scene_discovery_registered_priors_enabled_ ||
       scene_discovery_wall_plan_priors_enabled_)
     {
@@ -544,58 +599,28 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
       // not know (or care) whether a pose came from a prior registration or a
       // wall-placement plan.
       std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-      request->priors.reserve(
+      priors.reserve(
         persistent_world_.size() *
         ((scene_discovery_registered_priors_enabled_ ? 1U : 0U) +
         (scene_discovery_wall_plan_priors_enabled_ ? 1U : 0U)));
-      const auto append_prior = [this, &request](
-          const std::string & source, const geometry_msgs::msg::Pose & pose,
-          double weight) {
-          concrete_block_world_model_interfaces::msg::PosePrior prior;
-          prior.source = source;
-          prior.pose = pose;
-          prior.dimensions = block_dimensions_m_;
-          prior.weight = static_cast<float>(weight);
-          prior.translation_tolerance_m =
-            static_cast<float>(scene_discovery_prior_translation_tolerance_m_);
-          prior.orientation_tolerance_rad =
-            static_cast<float>(scene_discovery_prior_orientation_tolerance_rad_);
-          request->priors.push_back(std::move(prior));
-        };
       for (const auto & [id, block] : persistent_world_) {
         if (scene_discovery_registered_priors_enabled_) {
-          append_prior("registered_block:" + id, block.pose,
-            scene_discovery_registered_prior_weight_);
+          priors.push_back(
+            makePosePrior(
+              "registered_block:" + id, block.pose, scene_discovery_registered_prior_weight_));
         }
         if (scene_discovery_wall_plan_priors_enabled_ &&
           block.goal_status == Block::GOAL_SET)
         {
-          append_prior("wall_plan:" + id, block.goal_pose,
-            scene_discovery_wall_plan_prior_weight_);
+          priors.push_back(
+            makePosePrior(
+              "wall_plan:" + id, block.goal_pose, scene_discovery_wall_plan_prior_weight_));
         }
       }
     }
-    auto future = discover_blocks_client_->async_send_request(request);
-    if (future.wait_for(std::chrono::duration<double>(timeout_s)) != std::future_status::ready) {
-      response.success = false;
-      response.message = "Timed out waiting for detector scene discovery.";
-      response.blocks = latestWorldSnapshot();
-      return false;
-    }
 
     DiscoverBlocksSrv::Response::SharedPtr detector_response;
-    try {
-      detector_response = future.get();
-    } catch (const std::exception & error) {
-      response.success = false;
-      response.message = std::string("Detector scene discovery transport failed: ") + error.what();
-      response.blocks = latestWorldSnapshot();
-      return false;
-    }
-    if (!detector_response->success) {
-      response.success = false;
-      response.message = "Detector scene discovery failed: " + detector_response->message;
-      response.blocks = latestWorldSnapshot();
+    if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {
       return false;
     }
 
@@ -634,10 +659,8 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
         // cuboid; top-only remains intentionally coarse for later refinement.
         if (incoming.observed_faces >= 2U) {
           incoming.pose_status = Block::POSE_PRECISE;
-          // This is a geometry-constrained detector pose, not a registration
-          // result. Keep its covariance deliberately wider until replay labels
-          // calibrate the detector's measurement uncertainty.
-          setDiagonalPoseCovariance(incoming, 0.05, 0.15);
+          setDiagonalPoseCovariance(
+            incoming, kDetectorPositionSigmaM, kDetectorOrientationSigmaRad);
         } else {
           incoming.pose_status = Block::POSE_COARSE;
           setDefaultPoseCovariance(incoming);
@@ -696,6 +719,116 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
     return true;
   }
 
+bool PerceptionOrchestratorNode::runDetectorRefineBlock(
+    const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response)
+  {
+    const auto fail = [this, &response](const std::string & message) {
+        response.success = false;
+        response.message = message;
+        response.blocks = latestWorldSnapshot();
+        RCLCPP_WARN(get_logger(), "REFINE_BLOCK: %s", message.c_str());
+        return false;
+      };
+
+    if (target_block_id.empty()) {
+      return fail("target_block_id is required.");
+    }
+    Block target;
+    bool known = false;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(target_block_id);
+      known = it != persistent_world_.end();
+      if (known) {
+        target = it->second;
+      }
+    }
+    if (!known) {
+      return fail("unknown target block '" + target_block_id + "'.");
+    }
+    // A carried block's pose is rewritten from FK on every publish, so a measurement written
+    // here would be overwritten before the caller sees it. REFINE_GRASPED is that mode.
+    if (target.task_status == Block::TASK_MOVE) {
+      return fail(
+        "'" + target_block_id + "' is TASK_MOVE; use REFINE_GRASPED for a carried block.");
+    }
+
+    // One prior, the target's own believed pose: it resolves which cuboid hypothesis the
+    // detector should prefer where the block is expected, and says nothing about the rest
+    // of the scene.
+    std::vector<PosePrior> priors{
+      makePosePrior(
+        "registered_block:" + target_block_id, target.pose,
+        scene_discovery_registered_prior_weight_)};
+
+    DiscoverBlocksSrv::Response::SharedPtr detector_response;
+    if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {
+      return false;
+    }
+
+    std_msgs::msg::Header header = detector_response->blocks.header;
+    header.frame_id = world_frame_;
+    if (header.stamp.sec == 0 && header.stamp.nanosec == 0U) {
+      header.stamp = now();
+    }
+    captureDetectorSceneDiscovery(*detector_response, header);
+
+    // Accept inside the same window the prior was sent with: a detection outside it is a
+    // different block, not a re-measurement of this one.
+    const int match = cbpwm::selectRefineMatch(
+      target,
+      detector_response->blocks.blocks,
+      scene_discovery_prior_translation_tolerance_m_,
+      scene_discovery_prior_orientation_tolerance_rad_,
+      runtime_cfg_.scene_discovery_min_detector_confidence);
+    if (match < 0) {
+      return fail(
+        "no detection within " +
+        std::to_string(scene_discovery_prior_translation_tolerance_m_) + " m of '" +
+        target_block_id + "' (detections=" +
+        std::to_string(detector_response->blocks.blocks.size()) + "); pose left unchanged.");
+    }
+    const auto & observation = detector_response->blocks.blocks[static_cast<std::size_t>(match)];
+
+    Block updated;
+    bool written = false;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(target_block_id);
+      written = it != persistent_world_.end();
+      if (written) {
+        // Only the measurement changes. The id, the task status and the assembly goal belong
+        // to the block, not to this observation.
+        it->second.pose = observation.pose;
+        it->second.confidence = observation.confidence;
+        it->second.observed_faces = observation.observed_faces;
+        it->second.last_seen = header.stamp;
+        if (observation.observed_faces >= 2U) {
+          it->second.pose_status = Block::POSE_PRECISE;
+          setDiagonalPoseCovariance(
+            it->second, kDetectorPositionSigmaM, kDetectorOrientationSigmaRad);
+        } else {
+          it->second.pose_status = Block::POSE_COARSE;
+          setDefaultPoseCovariance(it->second);
+        }
+        updated = it->second;
+      }
+    }
+    if (!written) {
+      return fail("target block '" + target_block_id + "' vanished during refinement.");
+    }
+
+    publishPersistentWorld(header);
+    publishSceneDiscoveryPoseOverlay(header, {updated});
+    response.blocks = latestWorldSnapshot();
+    response.success = true;
+    response.message = "REFINE_BLOCK: '" + target_block_id + "' re-measured, moved " +
+      std::to_string(poseDistance(updated.pose, target.pose)) + " m (observed_faces=" +
+      std::to_string(static_cast<unsigned int>(updated.observed_faces)) + ").";
+    RCLCPP_INFO(get_logger(), "%s", response.message.c_str());
+    return true;
+  }
+
 void PerceptionOrchestratorNode::handleRunPoseEstimation(
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response)
@@ -707,9 +840,15 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
       return;
     }
 
+    // Both detector-backed modes answer inline: they call one service and are done, so
+    // nothing has to be queued onto the RGB frame pipeline.
+    const double detector_timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
     if (run_mode == cbpwm::OneShotMode::kSceneDiscovery) {
-      const double timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
-      runDetectorSceneDiscovery(timeout_s, *response);
+      runDetectorSceneDiscovery(detector_timeout_s, *response);
+      return;
+    }
+    if (run_mode == cbpwm::OneShotMode::kRefineBlock) {
+      runDetectorRefineBlock(request->target_block_id, detector_timeout_s, *response);
       return;
     }
 

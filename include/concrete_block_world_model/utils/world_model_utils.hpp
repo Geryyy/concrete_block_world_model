@@ -54,6 +54,19 @@ bool shouldAssociateByDistance(
   double confidence,
   double min_confidence);
 
+// REFINE_BLOCK: pick the detector observation that re-measures `target`. Returns the index of
+// the closest observation that clears `min_confidence` and whose translation and yaw both stay
+// inside tolerance, -1 when none does. Yaw differences are folded by pi -- a cuboid at yaw and
+// at yaw+pi occupies the same volume, so a flipped re-measurement is still the same block.
+// The confidence floor is the one the replaced registration path applied: without it a weak
+// spurious hypothesis that happens to be nearest would overwrite a good measured pose.
+int selectRefineMatch(
+  const concrete_block_world_model_interfaces::msg::Block & target,
+  const std::vector<concrete_block_world_model_interfaces::msg::Block> & observations,
+  double translation_tolerance_m,
+  double yaw_tolerance_rad,
+  double min_confidence);
+
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
   const std::vector<concrete_block_world_model_interfaces::msg::Block> & blocks,

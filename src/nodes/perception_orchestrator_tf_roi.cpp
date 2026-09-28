@@ -225,39 +225,6 @@ bool PerceptionOrchestratorNode::resolveCameraFrame(
     return true;
   }
 
-bool PerceptionOrchestratorNode::worldPointToCamera(
-    const std_msgs::msg::Header & header,
-    const Eigen::Vector3d & p_world,
-    Eigen::Vector3d & p_camera,
-    std::string & reason)
-  {
-    if (!tf_buffer_) {
-      reason = "TF buffer not initialized";
-      return false;
-    }
-
-    std::string camera_frame;
-    if (!resolveCameraFrame(header, camera_frame, reason)) {
-      return false;
-    }
-
-    try {
-      const auto tf_camera_world = tf_buffer_->lookupTransform(
-        camera_frame,
-        world_frame_,
-        rclcpp::Time(header.stamp),
-        rclcpp::Duration::from_seconds(0.2));
-      const Eigen::Matrix4d T_camera_world = transformToEigen(tf_camera_world);
-      const Eigen::Vector4d p_world_h(p_world.x(), p_world.y(), p_world.z(), 1.0);
-      const Eigen::Vector4d p_camera_h = T_camera_world * p_world_h;
-      p_camera = p_camera_h.head<3>();
-      return true;
-    } catch (const tf2::TransformException & ex) {
-      reason = std::string("TF lookup failed: ") + ex.what();
-      return false;
-    }
-  }
-
 cbpwm::RefineFlowRuntime PerceptionOrchestratorNode::makeRefineFlowRuntime()
   {
     cbpwm::RefineFlowRuntime rt;
@@ -285,16 +252,6 @@ cbpwm::RefineFlowRuntime PerceptionOrchestratorNode::makeRefineFlowRuntime()
           refine_grasped_roi_input_pub_->publish(image_msg);
         }
       };
-    rt.get_expected_target =
-      [this](const std::string & target_id, Block & out_target) {
-        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-        const auto it = persistent_world_.find(target_id);
-        if (it == persistent_world_.end()) {
-          return false;
-        }
-        out_target = it->second;
-        return true;
-      };
     rt.get_projection_intrinsics = [this](cbpwm::ProjectionIntrinsics & out_intr) {
         std::lock_guard<std::mutex> lock(camera_info_mutex_);
         out_intr.valid = camera_intrinsics_.valid;
@@ -315,14 +272,6 @@ cbpwm::RefineFlowRuntime PerceptionOrchestratorNode::makeRefineFlowRuntime()
       Eigen::Quaterniond & q_world,
       std::string & reason) {
         return lookupPredictedGraspedPose(block_id, header, p_world, p_camera, q_world, reason);
-      };
-    rt.world_point_to_camera =
-      [this](
-      const std_msgs::msg::Header & header,
-      const Eigen::Vector3d & p_world,
-      Eigen::Vector3d & p_camera,
-      std::string & reason) {
-        return worldPointToCamera(header, p_world, p_camera, reason);
       };
     rt.run_segmentation_sync =
       [this](
@@ -393,40 +342,4 @@ void PerceptionOrchestratorNode::processRefineGraspedWithFkRoi(
       };
 
     cbpwm::processRefineGraspedWithFkRoi(req, cfg, rt, image, cloud, t_start);
-  }
-
-bool PerceptionOrchestratorNode::tryProcessRefineBlockWithPoseRoi(
-    const sensor_msgs::msg::Image::ConstSharedPtr & image,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-    const OneShotRequest & run_request,
-    const std::chrono::steady_clock::time_point & t_start)
-  {
-    cbpwm::RefineRequest req;
-    req.sequence = run_request.sequence;
-    req.target_block_id = run_request.target_block_id;
-    req.registration_timeout_s = run_request.registration_timeout_s;
-
-    cbpwm::RefineBlockConfig cfg;
-    cfg.use_pose_roi = refine_block_use_pose_roi_;
-    cfg.roi_cfg = refine_block_roi_cfg_;
-    cfg.refine_target_max_distance_m = runtime_cfg_.refine_target_max_distance_m;
-    cfg.debug_detection_overlay_enabled = debug_detection_overlay_enabled_.load();
-
-    auto rt = makeRefineFlowRuntime();
-    rt.upsert_block = [this, &run_request, cloud](Block & block, std::string & assigned_id, std::string & reason) {
-        std::lock_guard<std::mutex> lock(persistent_world_mutex_);
-        return cbpwm::upsertRegisteredBlock(
-          persistent_world_,
-          world_block_counter_,
-          block,
-          run_request.mode,
-          run_request.target_block_id,
-          cloud->header,
-          *get_clock(),
-          associationConfig(),
-          assigned_id,
-          reason);
-      };
-
-    return cbpwm::tryProcessRefineBlockWithPoseRoi(req, cfg, rt, image, cloud, t_start);
   }

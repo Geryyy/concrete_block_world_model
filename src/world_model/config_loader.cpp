@@ -429,17 +429,6 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.refine_grasped_roi_size_m =
     node.declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
 
-  cfg.refine_block_use_pose_roi = node.declare_parameter<bool>("refine_block.use_pose_roi", false);
-  cfg.refine_block_roi_size_m =
-    node.declare_parameter<std::vector<double>>("refine_block.roi_size_m", {1.20, 1.00});
-  cfg.refine_block_min_depth_m = node.declare_parameter<double>("refine_block.min_depth_m", 0.5);
-  cfg.refine_block_max_depth_m = node.declare_parameter<double>("refine_block.max_depth_m", 30.0);
-  cfg.refine_block_segmentation_timeout_s =
-    node.declare_parameter<double>("refine_block.segmentation_timeout_s", 3.0);
-  cfg.refine_block_use_black_bg =
-    node.declare_parameter<bool>("refine_block.segmentation_input.use_black_background", false);
-  cfg.refine_block_blur_kernel_size =
-    node.declare_parameter<int>("refine_block.segmentation_input.blur_kernel_size", 31);
   cfg.initial_blocks_yaml =
     node.declare_parameter<std::string>("world_model.initial_blocks", "");
   cfg.static_scene_objects_yaml =
@@ -547,18 +536,8 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
       cfg.refine_grasped_min_depth_m, cfg.refine_grasped_max_depth_m);
     std::swap(cfg.refine_grasped_min_depth_m, cfg.refine_grasped_max_depth_m);
   }
-  if (cfg.refine_block_min_depth_m > cfg.refine_block_max_depth_m) {
-    RCLCPP_WARN(
-      logger,
-      "Invalid refine_block depth range [%.3f, %.3f], swapping bounds",
-      cfg.refine_block_min_depth_m, cfg.refine_block_max_depth_m);
-    std::swap(cfg.refine_block_min_depth_m, cfg.refine_block_max_depth_m);
-  }
   normalize_blur(
     cfg.refine_grasped_blur_kernel_size, "refine_grasped.segmentation_input.blur_kernel_size");
-  normalize_blur(
-    cfg.refine_block_blur_kernel_size,
-    "refine_block.segmentation_input.blur_kernel_size");
   for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size(); ++idx) {
     if (!std::isfinite(cfg.block_dimensions_m[idx]) || cfg.block_dimensions_m[idx] <= 0.0) {
       RCLCPP_WARN(

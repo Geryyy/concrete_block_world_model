@@ -85,13 +85,6 @@ struct WorldModelConfig
   std::vector<double> refine_grasped_roi_size_m{0.60, 0.40};
   PoseFusionConfig refine_grasped_pose_fusion;
 
-  bool refine_block_use_pose_roi{false};
-  std::vector<double> refine_block_roi_size_m{1.20, 1.00};
-  double refine_block_min_depth_m{0.5};
-  double refine_block_max_depth_m{30.0};
-  double refine_block_segmentation_timeout_s{3.0};
-  bool refine_block_use_black_bg{false};
-  int refine_block_blur_kernel_size{31};
   std::string initial_blocks_yaml{};
   std::vector<InitialBlockConfig> initial_blocks;
   std::string static_scene_objects_yaml{};

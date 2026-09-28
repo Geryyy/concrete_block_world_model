@@ -991,11 +991,6 @@ void PerceptionOrchestratorNode::processFrame(
     processRefineGraspedWithFkRoi(image, cloud, run_request, t_start);
     return;
   }
-  if (run_request.mode == cbpwm::OneShotMode::kRefineBlock &&
-    tryProcessRefineBlockWithPoseRoi(image, cloud, run_request, t_start))
-  {
-    return;
-  }
 
   if (!segment_client_->service_is_ready()) {
     RCLCPP_WARN(get_logger(), "Segmentation service unavailable.");

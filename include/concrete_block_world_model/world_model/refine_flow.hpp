@@ -45,14 +45,6 @@ struct RefineGraspedConfig
   std::string object_class{"concrete_block"};
 };
 
-struct RefineBlockConfig
-{
-  bool use_pose_roi{false};
-  RoiInputConfig roi_cfg;
-  double refine_target_max_distance_m{1.2};
-  bool debug_detection_overlay_enabled{true};
-};
-
 struct RefineFlowRuntime
 {
   rclcpp::Logger logger{rclcpp::get_logger("refine_flow")};
@@ -65,7 +57,6 @@ struct RefineFlowRuntime
 
   std::function<void(const sensor_msgs::msg::Image &)> publish_debug_overlay;
   std::function<void(const sensor_msgs::msg::Image &)> publish_roi_input;
-  std::function<bool(const std::string &, concrete_block_world_model_interfaces::msg::Block &)> get_expected_target;
   std::function<bool(ProjectionIntrinsics &)> get_projection_intrinsics;
 
   std::function<bool(
@@ -75,11 +66,6 @@ struct RefineFlowRuntime
       Eigen::Vector3d &,
       Eigen::Quaterniond &,
       std::string &)> lookup_predicted_grasped_pose;
-  std::function<bool(
-      const std_msgs::msg::Header &,
-      const Eigen::Vector3d &,
-      Eigen::Vector3d &,
-      std::string &)> world_point_to_camera;
 
   std::function<bool(
       const sensor_msgs::msg::Image &,
@@ -106,14 +92,6 @@ struct RefineFlowRuntime
 void processRefineGraspedWithFkRoi(
   const RefineRequest & request,
   const RefineGraspedConfig & cfg,
-  const RefineFlowRuntime & rt,
-  const sensor_msgs::msg::Image::ConstSharedPtr & image,
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,
-  const std::chrono::steady_clock::time_point & t_start);
-
-bool tryProcessRefineBlockWithPoseRoi(
-  const RefineRequest & request,
-  const RefineBlockConfig & cfg,
   const RefineFlowRuntime & rt,
   const sensor_msgs::msg::Image::ConstSharedPtr & image,
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud,

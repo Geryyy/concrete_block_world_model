@@ -272,24 +272,10 @@ world_model_node:
         # Log pose-fusion accept/reject details.
         debug_log: true
 
-    # ----------------------------------
-    # REFINE_BLOCK optional targeted ROI mode
-    # Uses target block pose from persistent world model as ROI seed.
-    # Falls back to full-image REFINE_BLOCK when ROI preconditions fail.
-    # ----------------------------------
-    refine_block:
-      # Use existing world pose to crop REFINE_BLOCK segmentation.
-      use_pose_roi: true
-      # ROI size around the target block pose.
-      roi_size_m: [1.20, 1.00]
-      # Minimum target depth for pose-based ROI projection.
-      min_depth_m: 0.5
-      # Maximum target depth for pose-based ROI projection.
-      max_depth_m: 30.0
-      # Max wait for ROI segmentation during REFINE_BLOCK.
-      segmentation_timeout_s: 3.0
-      segmentation_input:
-        # If true, black out pixels outside the ROI.
-        use_black_background: false
-        # Blur kernel for pixels outside ROI when not blacked out.
-        blur_kernel_size: 31
+    # REFINE_BLOCK has no RGB stage: it re-measures the target with the point-cloud
+    # detector, sending the target's world pose as the single prior and accepting the
+    # nearest detection inside that prior's tolerances. Those tolerances are the
+    # scene_discovery.priors.* parameters, declared with defaults in
+    # perception_orchestrator_node.cpp and deliberately not overridden here -- widening
+    # translation_tolerance_m past half the block pitch would let a refine write a
+    # neighbour's pose into the target.
