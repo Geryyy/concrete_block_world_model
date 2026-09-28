@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/Geometry>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <vision_msgs/msg/detection2_d.hpp>
@@ -66,6 +68,18 @@ int selectRefineMatch(
   double translation_tolerance_m,
   double yaw_tolerance_rad,
   double min_confidence);
+
+// Where a carried block is, given the TCP and the grasp offset: the pose FK tracking
+// publishes for a TASK_MOVE block, and the prior REFINE_GRASPED sends the detector.
+geometry_msgs::msg::Pose poseFromGraspOffset(
+  const Eigen::Matrix4d & T_world_tcp, const Eigen::Matrix4d & T_tcp_block);
+
+// The inverse: the grasp offset that makes FK tracking reproduce `block_pose`. This is how a
+// measurement of a carried block is kept -- writing the pose alone would be overwritten by the
+// next FK update, and the corrected offset also carries the measurement forward as the crane
+// moves on.
+Eigen::Matrix4d graspOffsetFromPose(
+  const Eigen::Matrix4d & T_world_tcp, const geometry_msgs::msg::Pose & block_pose);
 
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,

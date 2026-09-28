@@ -527,3 +527,93 @@ TEST(SelectRefineMatch, HalfTurnIsTheSameBlock) {
       target, {blockAt(2.05, 0.0, 0.3, kHalfTurn)}, kTranslationToleranceM, kYawToleranceRad,
       kMinConfidence), 0);
 }
+
+namespace
+{
+
+// A TCP that is neither at the origin nor axis-aligned, so the offset round trip is a real
+// transform and not an addition.
+Eigen::Matrix4d tcpAt(double x, double y, double z, double yaw)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  T.block<3, 3>(0, 0) =
+    Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  T.block<3, 1>(0, 3) = Eigen::Vector3d(x, y, z);
+  return T;
+}
+
+}  // namespace
+
+// REFINE_GRASPED measures the block hanging in the gripper. The measurement survives only as a
+// grasp offset -- FK tracking rewrites the pose of every carried block from TCP * offset -- so
+// the correction has to land in the TCP's frame, and it has to still be there once the crane
+// has moved on.
+TEST(RefineGrasped, MeasuredOffsetIsExpressedInTheTcpFrame) {
+  // TCP turned a quarter turn about z, so a world-frame residual and a TCP-frame one cannot
+  // be confused: +x in world is +y in the TCP.
+  const Eigen::Matrix4d T_world_tcp = tcpAt(2.4, -1.1, 3.35, 0.5 * kHalfTurn);
+  Eigen::Matrix4d grasp_offset = Eigen::Matrix4d::Identity();
+  grasp_offset.block<3, 3>(0, 0) =
+    Eigen::AngleAxisd(kHalfTurn, Eigen::Vector3d::UnitX()).toRotationMatrix();
+  grasp_offset.block<3, 1>(0, 3) = Eigen::Vector3d(0.0, 0.0, 0.85);
+
+  // Where FK says the block is: 0.85 m along the TCP's own z, with the block turned over.
+  const auto fk_pose = cbpwm::poseFromGraspOffset(T_world_tcp, grasp_offset);
+  EXPECT_NEAR(fk_pose.position.x, 2.4, 1e-9);
+  EXPECT_NEAR(fk_pose.position.y, -1.1, 1e-9);
+  EXPECT_NEAR(fk_pose.position.z, 3.35 + 0.85, 1e-9);
+
+  // The detector answers with the carried block 0.09 m further along world x and 0.06 m
+  // lower -- the crane bending under load, which is the whole point of the measurement.
+  Block target;
+  target.pose = fk_pose;
+  Block measured = target;
+  measured.pose.position.x += 0.09;
+  measured.pose.position.z -= 0.06;
+  measured.confidence = 0.68F;
+  const std::vector<Block> detections{blockAt(2.0, 4.0, 0.3, 0.0), measured};
+  const int match = cbpwm::selectRefineMatch(
+    target, detections, kTranslationToleranceM, kYawToleranceRad, kMinConfidence);
+  ASSERT_EQ(match, 1);
+
+  // In the quarter-turned TCP frame that world residual reads as -0.09 on y and -0.06 on z.
+  const auto corrected =
+    cbpwm::graspOffsetFromPose(T_world_tcp, detections[static_cast<std::size_t>(match)].pose);
+  EXPECT_NEAR(corrected(0, 3), 0.0, 1e-9);
+  EXPECT_NEAR(corrected(1, 3), -0.09, 1e-9);
+  EXPECT_NEAR(corrected(2, 3), 0.85 - 0.06, 1e-9);
+  // The rotation is the measurement's, unchanged: the detection came back unturned.
+  EXPECT_NEAR(
+    (corrected.block<3, 3>(0, 0) - grasp_offset.block<3, 3>(0, 0)).norm(), 0.0, 1e-9);
+
+  // And the correction travels: after the crane has slewed and lifted, FK tracking still
+  // reports the block where the measurement put it relative to the TCP, not where the
+  // uncorrected offset would have.
+  const Eigen::Matrix4d T_world_tcp_later = tcpAt(3.0, -0.4, 3.60, 0.5 * kHalfTurn);
+  const auto tracked = cbpwm::poseFromGraspOffset(T_world_tcp_later, corrected);
+  EXPECT_NEAR(tracked.position.x, 3.0 + 0.09, 1e-9);
+  EXPECT_NEAR(tracked.position.y, -0.4, 1e-9);
+  EXPECT_NEAR(tracked.position.z, 3.60 + 0.85 - 0.06, 1e-9);
+}
+
+// No match must leave the offset alone, so the block keeps tracking on FK -- the fallback the
+// BT relies on when the carried block is occluded. The detector sees the whole scene, and a
+// neighbouring block one pitch away is not a re-measurement of the carried one.
+TEST(RefineGrasped, NoMatchLeavesNothingToWriteBack) {
+  const Eigen::Matrix4d T_world_tcp = tcpAt(2.4, -1.1, 3.35, 0.6);
+  Eigen::Matrix4d grasp_offset = Eigen::Matrix4d::Identity();
+  grasp_offset.block<3, 1>(0, 3) = Eigen::Vector3d(0.0, 0.0, 0.85);
+  Block target;
+  target.pose = cbpwm::poseFromGraspOffset(T_world_tcp, grasp_offset);
+
+  Block neighbour = target;
+  neighbour.pose.position.y += 0.9;
+  neighbour.confidence = 0.9F;
+  Block weak_but_close = target;
+  weak_but_close.pose.position.x += 0.02;
+  weak_but_close.confidence = 0.05F;
+  EXPECT_EQ(
+    cbpwm::selectRefineMatch(
+      target, {neighbour, weak_but_close}, kTranslationToleranceM, kYawToleranceRad,
+      kMinConfidence), -1);
+}

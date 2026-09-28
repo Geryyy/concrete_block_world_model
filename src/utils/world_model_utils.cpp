@@ -460,6 +460,36 @@ int selectRefineMatch(
   return best;
 }
 
+geometry_msgs::msg::Pose poseFromGraspOffset(
+  const Eigen::Matrix4d & T_world_tcp, const Eigen::Matrix4d & T_tcp_block)
+{
+  const Eigen::Matrix4d T_world_block = T_world_tcp * T_tcp_block;
+  const Eigen::Quaterniond q(Eigen::Matrix3d(T_world_block.block<3, 3>(0, 0)));
+  const Eigen::Quaterniond q_n = q.normalized();
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = T_world_block(0, 3);
+  pose.position.y = T_world_block(1, 3);
+  pose.position.z = T_world_block(2, 3);
+  pose.orientation.x = q_n.x();
+  pose.orientation.y = q_n.y();
+  pose.orientation.z = q_n.z();
+  pose.orientation.w = q_n.w();
+  return pose;
+}
+
+Eigen::Matrix4d graspOffsetFromPose(
+  const Eigen::Matrix4d & T_world_tcp, const geometry_msgs::msg::Pose & block_pose)
+{
+  Eigen::Matrix4d T_world_block = Eigen::Matrix4d::Identity();
+  T_world_block.block<3, 3>(0, 0) =
+    Eigen::Quaterniond(
+    block_pose.orientation.w, block_pose.orientation.x,
+    block_pose.orientation.y, block_pose.orientation.z).normalized().toRotationMatrix();
+  T_world_block.block<3, 1>(0, 3) =
+    Eigen::Vector3d(block_pose.position.x, block_pose.position.y, block_pose.position.z);
+  return T_world_tcp.inverse() * T_world_block;
+}
+
 visualization_msgs::msg::MarkerArray buildWorldMarkers(
   const std_msgs::msg::Header & header,
   const std::vector<Block> & blocks,

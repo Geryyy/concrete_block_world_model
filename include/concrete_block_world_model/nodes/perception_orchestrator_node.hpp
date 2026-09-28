@@ -205,9 +205,11 @@ private:
     const std_msgs::msg::Header & header,
     Eigen::Matrix4d & T_world_tcp,
     std::string & reason);
+  // False when a real nominal T_tcp_block_ is configured and the offset's translation strays
+  // further from it than the configured max.
+  bool graspOffsetIsPlausible(const Eigen::Matrix4d & T_tcp_block, std::string & reason) const;
   // Capture the grasp offset T_tcp_block from a block's registered world pose and the
-  // latest TCP pose (T_world_tcp^-1 * T_world_block). When a real nominal T_tcp_block_ is
-  // configured, rejects captures that deviate from it by more than the configured max.
+  // latest TCP pose (T_world_tcp^-1 * T_world_block), subject to that bound.
   bool captureGraspOffsetFromPose(
     const geometry_msgs::msg::Pose & block_pose,
     Eigen::Matrix4d & out_offset,
@@ -234,6 +236,11 @@ private:
   // as the single prior and writes back only the detection that matches it; the block keeps
   // its id, task status and assembly goal.
   bool runDetectorRefineBlock(
+    const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response);
+  // Re-measure the block in the gripper. Sends its FK pose as the single "fk"-sourced prior --
+  // the only prior source the detector lets seed a hypothesis where geometry proposes none --
+  // and folds the matching detection back into the block's grasp offset.
+  bool runDetectorRefineGrasped(
     const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response);
   // Shared detector call for both detector flows. On failure it fills `response` with the
   // reason and the unchanged world snapshot.

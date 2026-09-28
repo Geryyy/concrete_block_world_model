@@ -156,6 +156,22 @@ bool PerceptionOrchestratorNode::lookupTcpInWorld(
   }
 }
 
+bool PerceptionOrchestratorNode::graspOffsetIsPlausible(
+    const Eigen::Matrix4d & T_tcp_block, std::string & reason) const
+  {
+    if (!grasp_offset_nominal_configured_) {
+      return true;
+    }
+    const double dev = (T_tcp_block.block<3, 1>(0, 3) - T_tcp_block_.block<3, 1>(0, 3)).norm();
+    if (dev > refine_grasped_grasp_offset_max_deviation_m_) {
+      reason = "grasp offset deviates " + std::to_string(dev) +
+        " m from nominal (max " +
+        std::to_string(refine_grasped_grasp_offset_max_deviation_m_) + " m)";
+      return false;
+    }
+    return true;
+  }
+
 bool PerceptionOrchestratorNode::captureGraspOffsetFromPose(
     const geometry_msgs::msg::Pose & block_pose,
     Eigen::Matrix4d & out_offset,
@@ -169,28 +185,10 @@ bool PerceptionOrchestratorNode::captureGraspOffsetFromPose(
       return false;
     }
 
-    Eigen::Matrix4d T_world_block = Eigen::Matrix4d::Identity();
-    T_world_block.block<3, 3>(0, 0) =
-      Eigen::Quaterniond(
-      block_pose.orientation.w, block_pose.orientation.x,
-      block_pose.orientation.y, block_pose.orientation.z).normalized().toRotationMatrix();
-    T_world_block.block<3, 1>(0, 3) =
-      Eigen::Vector3d(block_pose.position.x, block_pose.position.y, block_pose.position.z);
-
-    const Eigen::Matrix4d T_tcp_block = T_world_tcp.inverse() * T_world_block;
-
-    // Plausibility gate: reject captures that stray too far from a configured nominal.
-    if (grasp_offset_nominal_configured_) {
-      const double dev =
-        (T_tcp_block.block<3, 1>(0, 3) - T_tcp_block_.block<3, 1>(0, 3)).norm();
-      if (dev > refine_grasped_grasp_offset_max_deviation_m_) {
-        reason = "captured grasp offset deviates " + std::to_string(dev) +
-          " m from nominal (max " +
-          std::to_string(refine_grasped_grasp_offset_max_deviation_m_) + " m)";
-        return false;
-      }
+    const Eigen::Matrix4d T_tcp_block = cbpwm::graspOffsetFromPose(T_world_tcp, block_pose);
+    if (!graspOffsetIsPlausible(T_tcp_block, reason)) {
+      return false;
     }
-
     out_offset = T_tcp_block;
     return true;
   }

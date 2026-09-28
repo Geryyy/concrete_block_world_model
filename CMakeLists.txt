@@ -127,7 +127,7 @@ if(BUILD_TESTING)
     # which is a claim about the file and not about any function.
     target_compile_definitions(test_world_model_utils PRIVATE
       CBP_WORLD_MODEL_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/world_model.yaml")
-    target_link_libraries(test_world_model_utils yaml-cpp)
+    target_link_libraries(test_world_model_utils yaml-cpp Eigen3::Eigen)
   endif()
 
 endif()

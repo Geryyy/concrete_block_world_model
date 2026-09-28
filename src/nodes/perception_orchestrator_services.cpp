@@ -25,6 +25,12 @@ namespace
 constexpr double kDetectorPositionSigmaM = 0.05;
 constexpr double kDetectorOrientationSigmaRad = 0.15;
 
+// Weight of the FK prior REFINE_GRASPED sends. Fixed rather than taken from a scene-discovery
+// knob: it is the detector's own pose_priors.fk.weight, i.e. the value every recorded
+// measurement of a carried block was taken at, and a zero here would silently turn
+// REFINE_GRASPED into an unprimed scene discovery.
+constexpr double kGraspedFkPriorWeight = 0.35;
+
 int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
 {
   return static_cast<int64_t>(stamp.sec) * 1000000000LL +
@@ -829,6 +835,137 @@ bool PerceptionOrchestratorNode::runDetectorRefineBlock(
     return true;
   }
 
+bool PerceptionOrchestratorNode::runDetectorRefineGrasped(
+    const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response)
+  {
+    const auto fail = [this, &response](const std::string & message) {
+        response.success = false;
+        response.message = message;
+        response.blocks = latestWorldSnapshot();
+        RCLCPP_WARN(get_logger(), "REFINE_GRASPED: %s", message.c_str());
+        return false;
+      };
+
+    Block target;
+    bool known = false;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(target_block_id);
+      known = it != persistent_world_.end();
+      if (known) {
+        target = it->second;
+      }
+    }
+    if (!known) {
+      return fail("unknown target block '" + target_block_id + "'.");
+    }
+    if (target.task_status != Block::TASK_MOVE) {
+      return fail(
+        "'" + target_block_id + "' is not TASK_MOVE; use REFINE_BLOCK for a block that is "
+        "not carried.");
+    }
+
+    // Where FK believes the carried block is: the TCP, times the offset captured at the pick.
+    // Source "fk" is load-bearing, not a label: the detector only lets a prior *seed* a
+    // hypothesis when it is sourced "fk", and a block hanging in the gripper is exactly the
+    // case the point cloud alone does not propose.
+    const Eigen::Matrix4d T_tcp_block = resolveGraspOffset(target_block_id);
+    Eigen::Matrix4d T_world_tcp = Eigen::Matrix4d::Identity();
+    std::string reason;
+    if (!lookupTcpInWorld(std_msgs::msg::Header{}, T_world_tcp, reason)) {
+      return fail("FK prior unavailable: " + reason);
+    }
+
+    std::vector<PosePrior> priors{
+      makePosePrior(
+        "fk", cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block), kGraspedFkPriorWeight)};
+
+    DiscoverBlocksSrv::Response::SharedPtr detector_response;
+    if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {
+      return false;
+    }
+
+    std_msgs::msg::Header header = detector_response->blocks.header;
+    header.frame_id = world_frame_;
+    if (header.stamp.sec == 0 && header.stamp.nanosec == 0U) {
+      header.stamp = now();
+    }
+    captureDetectorSceneDiscovery(*detector_response, header);
+
+    // Everything from here on is referred to one instant: the TCP at the stamp of the cloud
+    // the detector answered from. That cloud may be up to the detector's cache age old, and a
+    // crane that moved since would put both the acceptance window and the corrected offset a
+    // long way off if they were taken at `now()` instead.
+    if (!lookupTcpInWorld(header, T_world_tcp, reason)) {
+      return fail("TCP pose at the observation unavailable: " + reason);
+    }
+    const geometry_msgs::msg::Pose fk_pose =
+      cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block);
+
+    Block probe = target;
+    probe.pose = fk_pose;
+    const int match = cbpwm::selectRefineMatch(
+      probe,
+      detector_response->blocks.blocks,
+      scene_discovery_prior_translation_tolerance_m_,
+      scene_discovery_prior_orientation_tolerance_rad_,
+      runtime_cfg_.scene_discovery_min_detector_confidence);
+    if (match < 0) {
+      return fail(
+        "no detection within " +
+        std::to_string(scene_discovery_prior_translation_tolerance_m_) + " m of the FK pose of '" +
+        target_block_id + "' (detections=" +
+        std::to_string(detector_response->blocks.blocks.size()) + "); FK pose kept.");
+    }
+    const auto & observation = detector_response->blocks.blocks[static_cast<std::size_t>(match)];
+
+    // A measured pose alone would not survive: publishPersistentWorld rewrites every TASK_MOVE
+    // pose as TCP * grasp offset. Folding the measurement into that offset is what makes it
+    // stick, and it keeps the correction attached to the block as the crane moves on.
+    const Eigen::Matrix4d measured_offset =
+      cbpwm::graspOffsetFromPose(T_world_tcp, observation.pose);
+    if (!graspOffsetIsPlausible(measured_offset, reason)) {
+      return fail("measured pose rejected: " + reason);
+    }
+
+    Block updated;
+    bool written = false;
+    {
+      std::lock_guard<std::mutex> lock(persistent_world_mutex_);
+      const auto it = persistent_world_.find(target_block_id);
+      // The detector call is not held under any lock, so the block may have been placed or
+      // cleared meanwhile -- and then this measurement describes a block that is no longer in
+      // the gripper.
+      written = it != persistent_world_.end() && it->second.task_status == Block::TASK_MOVE;
+      if (written) {
+        // pose_status, confidence and covariance of a carried block belong to FK tracking,
+        // which rewrites them for every TASK_MOVE block on the publish below. Only the
+        // measurement and its provenance are written here.
+        it->second.pose = observation.pose;
+        it->second.observed_faces = observation.observed_faces;
+        it->second.last_seen = header.stamp;
+        task_move_grasp_offsets_[target_block_id] = measured_offset;
+        updated = it->second;
+      }
+    }
+    if (!written) {
+      return fail(
+        "target block '" + target_block_id + "' is no longer a carried block; pose left "
+        "unchanged.");
+    }
+
+    publishPersistentWorld(header);
+    publishSceneDiscoveryPoseOverlay(header, {updated});
+    response.blocks = latestWorldSnapshot();
+    response.success = true;
+    response.message = "REFINE_GRASPED: '" + target_block_id + "' measured " +
+      std::to_string(poseDistance(observation.pose, fk_pose)) + " m from its FK pose " +
+      "(observed_faces=" +
+      std::to_string(static_cast<unsigned int>(observation.observed_faces)) + ").";
+    RCLCPP_INFO(get_logger(), "%s", response.message.c_str());
+    return true;
+  }
+
 void PerceptionOrchestratorNode::handleRunPoseEstimation(
     const std::shared_ptr<RunPoseSrv::Request> request,
     std::shared_ptr<RunPoseSrv::Response> response)
@@ -840,7 +977,7 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
       return;
     }
 
-    // Both detector-backed modes answer inline: they call one service and are done, so
+    // Every detector-backed mode answers inline: it calls one service and is done, so
     // nothing has to be queued onto the RGB frame pipeline.
     const double detector_timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
     if (run_mode == cbpwm::OneShotMode::kSceneDiscovery) {
@@ -851,6 +988,20 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
       runDetectorRefineBlock(request->target_block_id, detector_timeout_s, *response);
       return;
     }
+    if (run_mode == cbpwm::OneShotMode::kRefineGrasped) {
+      std::string target_block_id = request->target_block_id;
+      if (target_block_id.empty()) {
+        target_block_id = resolveGraspedBlockId();
+      }
+      if (target_block_id.empty()) {
+        response->success = false;
+        response->message = "No grasped block found (TASK_MOVE) and no target_block_id provided.";
+        response->blocks = latestWorldSnapshot();
+        return;
+      }
+      runDetectorRefineGrasped(target_block_id, detector_timeout_s, *response);
+      return;
+    }
 
     OneShotRequest run_request;
     run_request.mode = run_mode;
@@ -858,15 +1009,6 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
     run_request.enable_debug = request->enable_debug;
     run_request.registration_timeout_s =
       request->timeout_s > 0.0f ? static_cast<double>(request->timeout_s) : 3.0;
-
-    if (run_mode == cbpwm::OneShotMode::kRefineGrasped && run_request.target_block_id.empty()) {
-      run_request.target_block_id = resolveGraspedBlockId();
-      if (run_request.target_block_id.empty()) {
-        response->success = false;
-        response->message = "No grasped block found (TASK_MOVE) and no target_block_id provided.";
-        return;
-      }
-    }
 
     {
       std::lock_guard<std::mutex> lock(one_shot_mutex_);

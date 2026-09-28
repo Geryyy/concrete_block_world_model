@@ -210,8 +210,13 @@ world_model_node:
     object_class: "concrete_block"
 
     # ----------------------------------
-    # REFINE_GRASPED robust mode (FK + ROI)
+    # Grasped-block FK state (and the retired RGB REFINE_GRASPED mode)
     # ----------------------------------
+    # REFINE_GRASPED runs on the point-cloud detector: it sends the FK pose below as its
+    # prior and folds the matching detection back into the grasp offset. Only tcp_frame,
+    # tcp_to_block, grasp_offset_capture and camera_info_topic (the scene-discovery pose
+    # overlay reads those intrinsics) are still live; the ROI/segmentation/pose_fusion keys
+    # below feed the unreachable RGB one-shot pipeline and retire with it.
     refine_grasped:
       # Crop segmentation around FK-predicted grasped block pose.
       use_fk_roi: true
