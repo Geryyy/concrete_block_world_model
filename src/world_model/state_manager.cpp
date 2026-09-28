@@ -50,8 +50,6 @@ bool upsertRegisteredBlock(
   std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
   concrete_block_world_model_interfaces::msg::Block incoming,
-  OneShotMode run_mode,
-  const std::string & target_block_id,
   const std_msgs::msg::Header & header,
   const rclcpp::Clock & clock,
   const AssociationConfig & config,
@@ -62,13 +60,6 @@ bool upsertRegisteredBlock(
   if (incoming.confidence < config.min_update_confidence) {
     reason = "confidence below min_update_confidence";
     return false;
-  }
-
-  std::string forced_id;
-  if ((run_mode == OneShotMode::kRefineBlock || run_mode == OneShotMode::kRefineGrasped) &&
-    !target_block_id.empty())
-  {
-    forced_id = target_block_id;
   }
 
   const concrete_block_world_model_interfaces::msg::Block * best_match = nullptr;
@@ -97,9 +88,7 @@ bool upsertRegisteredBlock(
     }
   }
 
-  if (!forced_id.empty()) {
-    assigned_id = forced_id;
-  } else if (best_match != nullptr) {
+  if (best_match != nullptr) {
     assigned_id = best_id;
   } else {
     assigned_id = nextWorldBlockId(persistent_world, world_block_counter);

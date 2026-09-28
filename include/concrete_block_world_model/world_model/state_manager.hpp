@@ -32,12 +32,13 @@ std::string nextWorldBlockId(
   const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter);
 
+// Associate an anonymous detector observation with the world: nearest existing block inside
+// the association gates, or a fresh id. The refine modes do not come through here -- they
+// address a block by id and write it directly.
 bool upsertRegisteredBlock(
   std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
   concrete_block_world_model_interfaces::msg::Block incoming,
-  OneShotMode run_mode,
-  const std::string & target_block_id,
   const std_msgs::msg::Header & header,
   const rclcpp::Clock & clock,
   const AssociationConfig & config,

@@ -7,7 +7,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
-#include "concrete_block_world_model/world_model/refine_flow.hpp"
 
 namespace cbp::world_model
 {
@@ -34,33 +33,16 @@ struct StaticSceneObjectConfig
 
 struct WorldModelConfig
 {
-  double min_fitness{0.3};
-  double max_rmse{0.05};
-  std::string object_class{"concrete_block"};
   std::string world_frame{"world"};
-  double max_sync_delta_s{0.06};
   double association_max_distance_m{0.45};
   double association_max_age_s{20.0};
   double min_update_confidence{0.25};
   double scene_discovery_min_detector_confidence{0.25};
   double scene_discovery_association_max_distance_m{0.45};
   bool task_move_fk_tracking_enabled{true};
-  double refine_target_max_distance_m{1.2};
-  bool scene_discovery_merge_enabled{true};
-  double scene_discovery_merge_containment_ratio{0.3};
-  double scene_discovery_merge_iou_threshold{0.5};
-  bool scene_discovery_coarse_fallback_enabled{true};
-  int scene_discovery_coarse_fallback_min_points{120};
-  double coarse_surface_square_ratio_thresh{1.35};
-  double coarse_front_center_offset_square_m{0.45};
-  double coarse_front_center_offset_rect_m{0.30};
-  bool debug_detection_overlay_enabled{true};
-  bool debug_refine_grasped_roi_input_enabled{true};
-  bool debug_scene_discovery_dump_enabled{false};
-  std::string debug_scene_discovery_dump_dir{"scene_discovery_dump"};
-  std::vector<std::string> debug_scene_discovery_dump_tf_frames{"K0_mounting_base"};
-  bool perf_log_timing_enabled{true};
-  int perf_log_every_n_frames{20};
+  // Read from `debug.scene_discovery_dump.tf_frames` -- see the declaration for why that name
+  // outlived the dump.
+  std::vector<std::string> scene_discovery_capture_tf_frames{"K0_mounting_base"};
   double marker_refresh_period_s{0.5};
   // How long an unchanged /crane/collision_scene may go unrepublished, s. The planner ages this
   // topic against its own `max_scene_age` (crane_planning issue 096) and the subscription is
@@ -70,20 +52,14 @@ struct WorldModelConfig
   // It rides `marker_refresh_period_s`, so it is only ever honoured to that resolution.
   double collision_scene_heartbeat_s{2.0};
 
-  bool refine_grasped_use_fk_roi{true};
+  // What is left of `refine_grasped`: the TCP frame FK tracking and the REFINE_GRASPED prior
+  // are built from, the nominal grasp offset and its plausibility bound, and the camera_info
+  // topic the scene-discovery pose overlay takes its projection from.
   std::string refine_grasped_tcp_frame{"elastic/K8_tool_center_point"};
-  std::string refine_grasped_camera_frame{};
   std::string refine_grasped_camera_info_topic{"/blackfly_rotated/camera_info"};
-  double refine_grasped_min_depth_m{0.5};
-  double refine_grasped_max_depth_m{30.0};
-  double refine_grasped_segmentation_timeout_s{3.0};
-  bool refine_grasped_use_black_bg{false};
-  int refine_grasped_blur_kernel_size{31};
   std::vector<double> refine_grasped_tcp_to_block_xyz{0.0, 0.0, 0.0};
   std::vector<double> refine_grasped_tcp_to_block_rpy{0.0, 0.0, 0.0};
   double refine_grasped_grasp_offset_max_deviation_m{1.0};
-  std::vector<double> refine_grasped_roi_size_m{0.60, 0.40};
-  PoseFusionConfig refine_grasped_pose_fusion;
 
   std::string initial_blocks_yaml{};
   std::vector<InitialBlockConfig> initial_blocks;

@@ -6,43 +6,31 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
-find_package(concrete_block_perception_interfaces REQUIRED)
 find_package(concrete_block_world_model_interfaces REQUIRED)
 find_package(crane_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(message_filters REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(point_cloud_transport REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_action REQUIRED)
-find_package(ros2_yolos_cpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(vision_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_executable(world_model_node
   src/nodes/perception_orchestrator_core.cpp
+  src/nodes/perception_orchestrator_grasp_tf.cpp
   src/nodes/perception_orchestrator_node.cpp
-  src/nodes/perception_orchestrator_pipeline.cpp
   src/nodes/perception_orchestrator_services.cpp
-  src/nodes/perception_orchestrator_tf_roi.cpp
+  src/nodes/perception_orchestrator_world.cpp
   src/utils/block_utils.cpp
-  src/utils/coarse_pose_utils.cpp
-  src/utils/img_utils.cpp
   src/utils/world_model_utils.cpp
   src/world_model/config_loader.cpp
-  src/world_model/refine_flow.cpp
-  src/world_model/registration_flow.cpp
-  src/world_model/roi_processing.cpp
-  src/world_model/roi_refinement.cpp
-  src/world_model/scene_discovery_flow.cpp
   src/world_model/state_manager.cpp
 )
 
@@ -58,22 +46,17 @@ target_link_libraries(world_model_node
 )
 
 ament_target_dependencies(world_model_node
-  concrete_block_perception_interfaces
   concrete_block_world_model_interfaces
   crane_msgs
   cv_bridge
   geometry_msgs
-  message_filters
   point_cloud_transport
   rclcpp
-  rclcpp_action
-  ros2_yolos_cpp
   sensor_msgs
   std_msgs
   tf2
   tf2_geometry_msgs
   tf2_ros
-  vision_msgs
   visualization_msgs
 )
 
@@ -120,7 +103,6 @@ if(BUILD_TESTING)
       std_msgs
       tf2
       tf2_geometry_msgs
-      vision_msgs
       visualization_msgs
     )
     # The shipped config is an oracle here: the vehicle has to be described in exactly one place,

@@ -1,7 +1,6 @@
 #include "concrete_block_world_model/nodes/perception_orchestrator_node.hpp"
 
 #include "concrete_block_world_model/utils/block_utils.hpp"
-#include "concrete_block_world_model/utils/img_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
 #include <array>
@@ -414,15 +413,12 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
       camera_info->width, camera_info->height, image->width, image->height);
     return;
   }
-  CameraIntrinsics intrinsics;
-  intrinsics.projection_fx = camera_info->p[0];
-  intrinsics.projection_fy = camera_info->p[5];
-  intrinsics.projection_cx = camera_info->p[2];
-  intrinsics.projection_cy = camera_info->p[6];
-  if (intrinsics.projection_fx <= 0.0 || intrinsics.projection_fy <= 0.0) {
-    RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: invalid CameraInfo projection matrix.");
-    return;
-  }
+  // P, not K: the image drawn on is the rectified one.  cameraInfoCallback only caches a
+  // message whose P is usable, so there is nothing left to validate here.
+  const double projection_fx = camera_info->p[0];
+  const double projection_fy = camera_info->p[5];
+  const double projection_cx = camera_info->p[2];
+  const double projection_cy = camera_info->p[6];
 
   Eigen::Matrix4d T_camera_world = Eigen::Matrix4d::Identity();
   try {
@@ -440,7 +436,7 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
 
   cv::Mat output;
   try {
-    output = toCvBgr(*image);
+    output = cv_bridge::toCvCopy(*image, "bgr8")->image;
   } catch (const std::exception & ex) {
     RCLCPP_WARN(get_logger(), "Scene-discovery pose overlay skipped: image conversion failed: %s", ex.what());
     return;
@@ -484,10 +480,10 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
         corner_world.x(), corner_world.y(), corner_world.z(), 1.0);
       visible[corner] = projectPoint(
         (T_camera_world * p_world_h).head<3>(),
-        intrinsics.projection_fx,
-        intrinsics.projection_fy,
-        intrinsics.projection_cx,
-        intrinsics.projection_cy,
+        projection_fx,
+        projection_fy,
+        projection_cx,
+        projection_cy,
         pixels[corner]);
     }
     const cv::Scalar black(0, 0, 0);
@@ -502,10 +498,10 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
     cv::Point center_pixel;
     if (projectPoint(
         (T_camera_world * center_world_h).head<3>(),
-        intrinsics.projection_fx,
-        intrinsics.projection_fy,
-        intrinsics.projection_cx,
-        intrinsics.projection_cy,
+        projection_fx,
+        projection_fy,
+        projection_cx,
+        projection_cy,
         center_pixel)) {
       std::ostringstream label;
       label << (stale_rgb ? "STALE RGB " : "")
@@ -521,19 +517,6 @@ void PerceptionOrchestratorNode::publishSceneDiscoveryPoseOverlay(
   scene_discovery_pose_overlay_pub_->publish(
     *cv_bridge::CvImage(image->header, "bgr8", output).toImageMsg());
 }
-
-void PerceptionOrchestratorNode::completeOneShotRequest(uint64_t sequence, bool success, const std::string & message)
-  {
-    std::lock_guard<std::mutex> lock(one_shot_mutex_);
-    if (sequence == 0 || sequence != active_one_shot_.sequence) {
-      return;
-    }
-    active_one_shot_ = OneShotRequest{};
-    one_shot_done_sequence_ = sequence;
-    one_shot_last_success_ = success;
-    one_shot_last_message_ = message;
-    one_shot_cv_.notify_all();
-  }
 
 PosePrior PerceptionOrchestratorNode::makePosePrior(
     const std::string & source, const geometry_msgs::msg::Pose & pose, double weight) const
@@ -684,8 +667,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
         std::string assigned_id;
         std::string reason;
         if (cbpwm::upsertRegisteredBlock(
-            candidate_world, world_block_counter_, incoming,
-            cbpwm::OneShotMode::kSceneDiscovery, "", header, *get_clock(),
+            candidate_world, world_block_counter_, incoming, header, *get_clock(),
             discovery_association, assigned_id, reason))
         {
           if (association_snapshot.find(assigned_id) != association_snapshot.end()) {
@@ -977,8 +959,9 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
       return;
     }
 
-    // Every detector-backed mode answers inline: it calls one service and is done, so
-    // nothing has to be queued onto the RGB frame pipeline.
+    // Every mode is a detector mode, and every one answers inline: one DiscoverBlocks call
+    // and done. `request->enable_debug` has nothing left to switch -- it used to gate the
+    // retired RGB stage's overlays -- and is ignored.
     const double detector_timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
     if (run_mode == cbpwm::OneShotMode::kSceneDiscovery) {
       runDetectorSceneDiscovery(detector_timeout_s, *response);
@@ -1000,58 +983,7 @@ void PerceptionOrchestratorNode::handleRunPoseEstimation(
         return;
       }
       runDetectorRefineGrasped(target_block_id, detector_timeout_s, *response);
-      return;
     }
-
-    OneShotRequest run_request;
-    run_request.mode = run_mode;
-    run_request.target_block_id = request->target_block_id;
-    run_request.enable_debug = request->enable_debug;
-    run_request.registration_timeout_s =
-      request->timeout_s > 0.0f ? static_cast<double>(request->timeout_s) : 3.0;
-
-    {
-      std::lock_guard<std::mutex> lock(one_shot_mutex_);
-      if (active_one_shot_.mode != cbpwm::OneShotMode::kNone) {
-        response->success = false;
-        response->message = "Another one-shot request is already running.";
-        return;
-      }
-      run_request.sequence = ++one_shot_sequence_counter_;
-      active_one_shot_ = run_request;
-    }
-
-    debug_detection_overlay_enabled_ = request->enable_debug;
-
-    RCLCPP_INFO(
-      get_logger(),
-      "Scheduled one-shot pose estimation: mode=%s target=%s",
-      cbpwm::oneShotModeToString(run_mode),
-      run_request.target_block_id.empty() ? "<all>" : run_request.target_block_id.c_str());
-
-    const double timeout_s = request->timeout_s > 0.0f ? request->timeout_s : 5.0;
-    {
-      std::unique_lock<std::mutex> lock(one_shot_mutex_);
-      const bool done = one_shot_cv_.wait_for(
-        lock,
-        std::chrono::duration<double>(timeout_s),
-        [this, &run_request]() {
-          return one_shot_done_sequence_ >= run_request.sequence;
-        });
-      if (!done) {
-        if (active_one_shot_.sequence == run_request.sequence) {
-          active_one_shot_ = OneShotRequest{};
-        }
-        response->success = false;
-        response->message = "Timed out waiting for one-shot result.";
-        response->blocks = latestWorldSnapshot();
-        return;
-      }
-      response->success = one_shot_last_success_;
-      response->message = one_shot_last_message_;
-    }
-
-    response->blocks = latestWorldSnapshot();
   }
 
 void PerceptionOrchestratorNode::handleGetCoarseBlocks(

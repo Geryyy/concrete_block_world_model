@@ -334,11 +334,7 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   // "perception_mode" is still accepted from launch files for backward compatibility
   // but is ignored: the world model is single-shot only (run_pose_estimation).
   (void)node.declare_parameter<std::string>("perception_mode", "IDLE");
-  cfg.min_fitness = node.declare_parameter<double>("min_fitness", 0.3);
-  cfg.max_rmse = node.declare_parameter<double>("max_rmse", 0.05);
-  cfg.object_class = node.declare_parameter<std::string>("object_class", "concrete_block");
   cfg.world_frame = node.declare_parameter<std::string>("world_frame", "world");
-  cfg.max_sync_delta_s = node.declare_parameter<double>("sync.max_delta_s", 0.06);
   cfg.association_max_distance_m =
     node.declare_parameter<double>("world_model.association_max_distance_m", 0.45);
   cfg.association_max_age_s = node.declare_parameter<double>(
@@ -356,78 +352,29 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.task_move_fk_tracking_enabled = node.declare_parameter<bool>(
     "task_move.fk_tracking.enabled",
     true);
-  cfg.refine_target_max_distance_m =
-    node.declare_parameter<double>("world_model.refine_target_max_distance_m", 1.2);
-  cfg.scene_discovery_merge_enabled =
-    node.declare_parameter<bool>("world_model.scene_discovery_merge.enable", true);
-  cfg.scene_discovery_merge_containment_ratio = node.declare_parameter<double>(
-    "world_model.scene_discovery_merge.containment_ratio", 0.3);
-  cfg.scene_discovery_merge_iou_threshold = node.declare_parameter<double>(
-    "world_model.scene_discovery_merge.iou_threshold", 0.5);
-  cfg.scene_discovery_coarse_fallback_enabled =
-    node.declare_parameter<bool>("world_model.scene_discovery_coarse_fallback.enable", true);
-  cfg.scene_discovery_coarse_fallback_min_points =
-    node.declare_parameter<int>("world_model.scene_discovery_coarse_fallback.min_points", 120);
-  cfg.coarse_surface_square_ratio_thresh = node.declare_parameter<double>(
-    "world_model.scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh", 1.35);
-  cfg.coarse_front_center_offset_square_m = node.declare_parameter<double>(
-    "world_model.scene_discovery_coarse_fallback.center_offset.square_m", 0.45);
-  cfg.coarse_front_center_offset_rect_m = node.declare_parameter<double>(
-    "world_model.scene_discovery_coarse_fallback.center_offset.rect_m", 0.30);
-  cfg.debug_detection_overlay_enabled = node.declare_parameter<bool>(
-    "debug.publish_detection_overlay", true);
-  cfg.debug_refine_grasped_roi_input_enabled =
-    node.declare_parameter<bool>("debug.publish_refine_grasped_roi_input", true);
-  cfg.debug_scene_discovery_dump_enabled =
-    node.declare_parameter<bool>("debug.scene_discovery_dump.enable", false);
-  cfg.debug_scene_discovery_dump_dir =
-    node.declare_parameter<std::string>("debug.scene_discovery_dump.dir", "scene_discovery_dump");
-  cfg.debug_scene_discovery_dump_tf_frames =
+  // Extra frames snapshotted as T_world_<frame> in each scene-discovery *capture's* tf.yaml.
+  // The RGB dump this key is named after is gone, but the name is not free to fix here: replay
+  // capture profiles outside this package set it (the six gripper-rail frames an annotator
+  // needs), and rclcpp silently ignores an override whose parameter is not declared -- renaming
+  // it would drop those frames with no error anywhere. Rename it together with those profiles.
+  cfg.scene_discovery_capture_tf_frames =
     node.declare_parameter<std::vector<std::string>>(
     "debug.scene_discovery_dump.tf_frames", std::vector<std::string>{"K0_mounting_base"});
-  cfg.perf_log_timing_enabled = node.declare_parameter<bool>("perf.log_timing", true);
-  cfg.perf_log_every_n_frames = node.declare_parameter<int>("perf.log_every_n_frames", 100);
   cfg.marker_refresh_period_s = node.declare_parameter<double>(
     "world_model.marker_refresh_period_s", 0.5);
   cfg.collision_scene_heartbeat_s = node.declare_parameter<double>(
     "world_model.collision_scene_heartbeat_s", 2.0);
 
-  cfg.refine_grasped_use_fk_roi = node.declare_parameter<bool>("refine_grasped.use_fk_roi", true);
   cfg.refine_grasped_tcp_frame =
     node.declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
-  cfg.refine_grasped_camera_frame =
-    node.declare_parameter<std::string>("refine_grasped.camera_frame", "");
   cfg.refine_grasped_camera_info_topic = node.declare_parameter<std::string>(
     "refine_grasped.camera_info_topic", "/blackfly_rotated/camera_info");
-  cfg.refine_grasped_min_depth_m =
-    node.declare_parameter<double>("refine_grasped.min_depth_m", 0.5);
-  cfg.refine_grasped_max_depth_m =
-    node.declare_parameter<double>("refine_grasped.max_depth_m", 30.0);
-  cfg.refine_grasped_segmentation_timeout_s =
-    node.declare_parameter<double>("refine_grasped.segmentation_timeout_s", 3.0);
-  cfg.refine_grasped_use_black_bg =
-    node.declare_parameter<bool>("refine_grasped.segmentation_input.use_black_background", false);
-  cfg.refine_grasped_blur_kernel_size =
-    node.declare_parameter<int>("refine_grasped.segmentation_input.blur_kernel_size", 31);
-  cfg.refine_grasped_pose_fusion.enabled =
-    node.declare_parameter<bool>("refine_grasped.pose_fusion.enable", true);
-  cfg.refine_grasped_pose_fusion.mode = node.declare_parameter<std::string>(
-    "refine_grasped.pose_fusion.mode",
-    "position_from_registration_orientation_from_fk");
-  cfg.refine_grasped_pose_fusion.max_translation_jump_m = node.declare_parameter<double>(
-    "refine_grasped.pose_fusion.max_translation_jump_m", 0.35);
-  cfg.refine_grasped_pose_fusion.max_z_delta_m = node.declare_parameter<double>(
-    "refine_grasped.pose_fusion.max_z_delta_m", 0.25);
-  cfg.refine_grasped_pose_fusion.debug_log =
-    node.declare_parameter<bool>("refine_grasped.pose_fusion.debug_log", true);
   cfg.refine_grasped_tcp_to_block_xyz =
     node.declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.xyz", {0.0, 0.0, 0.0});
   cfg.refine_grasped_tcp_to_block_rpy =
     node.declare_parameter<std::vector<double>>("refine_grasped.tcp_to_block.rpy", {0.0, 0.0, 0.0});
   cfg.refine_grasped_grasp_offset_max_deviation_m = node.declare_parameter<double>(
     "refine_grasped.grasp_offset_capture.max_deviation_m", 1.0);
-  cfg.refine_grasped_roi_size_m =
-    node.declare_parameter<std::vector<double>>("refine_grasped.roi_size_m", {0.60, 0.40});
 
   cfg.initial_blocks_yaml =
     node.declare_parameter<std::string>("world_model.initial_blocks", "");
@@ -485,27 +432,6 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
         value = min_value;
       }
     };
-  auto normalize_blur = [logger](int & kernel, const char * name) {
-      if (kernel < 1) {
-        RCLCPP_WARN(logger, "Invalid %s=%d, clamping to 1", name, kernel);
-        kernel = 1;
-      }
-      if ((kernel % 2) == 0) {
-        RCLCPP_WARN(
-          logger, "Invalid %s=%d (must be odd), incrementing to %d", name, kernel,
-          kernel + 1);
-        kernel += 1;
-      }
-    };
-  auto clamp_min_i = [logger](int & value, int min_value, const char * name) {
-      if (value < min_value) {
-        RCLCPP_WARN(logger, "Invalid %s=%d, clamping to %d", name, value, min_value);
-        value = min_value;
-      }
-    };
-
-  clamp_min(cfg.min_fitness, 0.0, "min_fitness");
-  clamp_min(cfg.max_rmse, 0.0, "max_rmse");
   clamp_min(cfg.association_max_distance_m, 0.01, "world_model.association_max_distance_m");
   clamp_min(cfg.association_max_age_s, 0.1, "world_model.association_max_age_s");
   clamp_min(cfg.min_update_confidence, 0.0, "world_model.min_update_confidence");
@@ -515,29 +441,7 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
   clamp_min(
     cfg.scene_discovery_association_max_distance_m, 0.01,
     "world_model.scene_discovery.association_max_distance_m");
-  clamp_min(cfg.refine_target_max_distance_m, 0.01, "world_model.refine_target_max_distance_m");
-  clamp_min_i(
-    cfg.scene_discovery_coarse_fallback_min_points, 1,
-    "scene_discovery_coarse_fallback.min_points");
-  clamp_min(
-    cfg.coarse_surface_square_ratio_thresh, 1.0,
-    "scene_discovery_coarse_fallback.surface_shape.square_ratio_thresh");
-  clamp_min(
-    cfg.coarse_front_center_offset_square_m, 0.0,
-    "scene_discovery_coarse_fallback.center_offset.square_m");
-  clamp_min(
-    cfg.coarse_front_center_offset_rect_m, 0.0,
-    "scene_discovery_coarse_fallback.center_offset.rect_m");
 
-  if (cfg.refine_grasped_min_depth_m > cfg.refine_grasped_max_depth_m) {
-    RCLCPP_WARN(
-      logger,
-      "Invalid refine_grasped depth range [%.3f, %.3f], swapping bounds",
-      cfg.refine_grasped_min_depth_m, cfg.refine_grasped_max_depth_m);
-    std::swap(cfg.refine_grasped_min_depth_m, cfg.refine_grasped_max_depth_m);
-  }
-  normalize_blur(
-    cfg.refine_grasped_blur_kernel_size, "refine_grasped.segmentation_input.blur_kernel_size");
   for (std::size_t idx = 0; idx < cfg.block_dimensions_m.size(); ++idx) {
     if (!std::isfinite(cfg.block_dimensions_m[idx]) || cfg.block_dimensions_m[idx] <= 0.0) {
       RCLCPP_WARN(

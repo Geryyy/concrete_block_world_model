@@ -11,14 +11,10 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 : Node("block_world_model_node")
 {
     run_pose_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    action_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    detector_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     auto startup = cbpwm::loadWorldModelConfig(*this);
     cbpwm::normalizeWorldModelConfig(get_logger(), startup);
-    runtime_cfg_.min_fitness = startup.min_fitness;
-    runtime_cfg_.max_rmse = startup.max_rmse;
-    object_class_ = startup.object_class;
     world_frame_ = startup.world_frame;
-    runtime_cfg_.max_sync_delta_s = startup.max_sync_delta_s;
     runtime_cfg_.association_max_distance_m = startup.association_max_distance_m;
     runtime_cfg_.association_max_age_s = startup.association_max_age_s;
     runtime_cfg_.min_update_confidence = startup.min_update_confidence;
@@ -26,7 +22,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       startup.scene_discovery_min_detector_confidence;
     runtime_cfg_.scene_discovery_association_max_distance_m =
       startup.scene_discovery_association_max_distance_m;
-    runtime_cfg_.refine_target_max_distance_m = startup.refine_target_max_distance_m;
     detector_discover_service_ = declare_parameter<std::string>(
       "scene_discovery.detector_service", "/concrete_block_detector/discover_blocks");
     scene_discovery_overlay_enabled_ = declare_parameter<bool>(
@@ -86,33 +81,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     {
       throw std::invalid_argument("scene_discovery pose-prior weights and tolerances must be positive");
     }
-    scene_discovery_merge_enabled_ = startup.scene_discovery_merge_enabled;
-    scene_discovery_merge_containment_ratio_ = startup.scene_discovery_merge_containment_ratio;
-    scene_discovery_merge_iou_threshold_ = startup.scene_discovery_merge_iou_threshold;
-    scene_discovery_coarse_fallback_enabled_ = startup.scene_discovery_coarse_fallback_enabled;
-    scene_discovery_coarse_fallback_min_points_ = startup.scene_discovery_coarse_fallback_min_points;
-    coarse_surface_square_ratio_thresh_ = startup.coarse_surface_square_ratio_thresh;
-    coarse_front_center_offset_square_m_ = startup.coarse_front_center_offset_square_m;
-    coarse_front_center_offset_rect_m_ = startup.coarse_front_center_offset_rect_m;
-    debug_detection_overlay_enabled_ = startup.debug_detection_overlay_enabled;
-    debug_refine_grasped_roi_input_enabled_ = startup.debug_refine_grasped_roi_input_enabled;
-    debug_scene_discovery_dump_enabled_ = startup.debug_scene_discovery_dump_enabled;
-    debug_scene_discovery_dump_dir_ = startup.debug_scene_discovery_dump_dir;
-    debug_scene_discovery_dump_tf_frames_ = startup.debug_scene_discovery_dump_tf_frames;
     task_move_fk_tracking_enabled_ = startup.task_move_fk_tracking_enabled;
-    perf_log_timing_enabled_ = startup.perf_log_timing_enabled;
-    perf_log_every_n_frames_ = startup.perf_log_every_n_frames;
     collision_scene_heartbeat_s_ = startup.collision_scene_heartbeat_s;
-    refine_grasped_use_fk_roi_ = startup.refine_grasped_use_fk_roi;
     refine_grasped_tcp_frame_ = startup.refine_grasped_tcp_frame;
-    refine_grasped_camera_frame_ = startup.refine_grasped_camera_frame;
     refine_grasped_camera_info_topic_ = startup.refine_grasped_camera_info_topic;
-    refine_grasped_roi_cfg_.min_depth_m = startup.refine_grasped_min_depth_m;
-    refine_grasped_roi_cfg_.max_depth_m = startup.refine_grasped_max_depth_m;
-    refine_grasped_roi_cfg_.segmentation_timeout_s = startup.refine_grasped_segmentation_timeout_s;
-    refine_grasped_roi_cfg_.use_black_bg = startup.refine_grasped_use_black_bg;
-    refine_grasped_roi_cfg_.blur_kernel_size = startup.refine_grasped_blur_kernel_size;
-    refine_grasped_pose_fusion_ = startup.refine_grasped_pose_fusion;
+    scene_discovery_capture_tf_frames_ = startup.scene_discovery_capture_tf_frames;
     block_dimensions_m_ = startup.block_dimensions_m;
     vehicle_box_ = startup.vehicle_box;
 
@@ -145,32 +118,17 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       static_scene_objects_.push_back(std::move(object));
     }
 
-    if (perf_log_every_n_frames_ < 1) {
-      perf_log_every_n_frames_ = 1;
-    }
-
-    if (debug_detection_overlay_enabled_.load()) {
-      const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-      det_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
-        "debug/detection_overlay", debug_image_qos);
-      yolo_service_debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
-        "debug/yolo_service_debug_image", debug_image_qos);
-    }
     if (scene_discovery_overlay_enabled_) {
       const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
       scene_discovery_pose_overlay_pub_ = create_publisher<sensor_msgs::msg::Image>(
         "debug/scene_discovery_pose_overlay", debug_image_qos);
+      // The overlay is the sole consumer of the CameraInfo cache. Ungated it would subscribe to
+      // a camera nothing reads, on a deployment that turned the overlay off.
+      camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
+        refine_grasped_camera_info_topic_,
+        rclcpp::SensorDataQoS(),
+        std::bind(&PerceptionOrchestratorNode::cameraInfoCallback, this, std::placeholders::_1));
     }
-    if (debug_refine_grasped_roi_input_enabled_.load()) {
-      const auto debug_image_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
-      refine_grasped_roi_input_pub_ =
-        create_publisher<sensor_msgs::msg::Image>(
-        "debug/refine_grasped_roi_input", debug_image_qos);
-    }
-    camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-      refine_grasped_camera_info_topic_,
-      rclcpp::SensorDataQoS(),
-      std::bind(&PerceptionOrchestratorNode::cameraInfoCallback, this, std::placeholders::_1));
 
     const double tx = cbpwm::vectorComponent(
       get_logger(),
@@ -222,11 +180,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     refine_grasped_grasp_offset_max_deviation_m_ =
       startup.refine_grasped_grasp_offset_max_deviation_m;
 
-    refine_grasped_roi_cfg_.roi_size_x_m = cbpwm::vectorComponent(
-      get_logger(), startup.refine_grasped_roi_size_m, 0, 0.60, "refine_grasped.roi_size_m");
-    refine_grasped_roi_cfg_.roi_size_y_m = cbpwm::vectorComponent(
-      get_logger(), startup.refine_grasped_roi_size_m, 1, 0.40, "refine_grasped.roi_size_m");
-
     world_pub_ = create_publisher<BlockArray>("block_world_model", 10);
     const auto marker_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -240,7 +193,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
       "/crane/collision_scene",
       rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
-    image_sub_.subscribe(this, "image");
     if (scene_discovery_overlay_enabled_ || scene_discovery_capture_enabled_) {
       scene_discovery_image_sub_ = create_subscription<sensor_msgs::msg::Image>(
         "image",
@@ -250,30 +202,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
           this,
           std::placeholders::_1));
     }
-    cloud_sub_.subscribe(this, "points");
-    sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
-      SyncPolicy(10), image_sub_, cloud_sub_);
-    sync_->registerCallback(
-      std::bind(
-        &PerceptionOrchestratorNode::syncCallback,
-        this,
-        std::placeholders::_1,
-        std::placeholders::_2));
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    segment_client_ = create_client<SegmentSrv>(
-      "/yolos_segmentor_service/segment",
-      rmw_qos_profile_services_default,
-      action_client_cb_group_);
-    extract_mask_cutout_client_ = create_client<ExtractMaskCutoutSrv>(
-      "/extract_mask_cutout",
-      rmw_qos_profile_services_default,
-      action_client_cb_group_);
     discover_blocks_client_ = create_client<DiscoverBlocksSrv>(
-      detector_discover_service_, rmw_qos_profile_services_default, action_client_cb_group_);
-    action_client_ = rclcpp_action::create_client<RegisterBlock>(
-      this, "register_block", action_client_cb_group_);
+      detector_discover_service_, rmw_qos_profile_services_default, detector_client_cb_group_);
 
     get_coarse_srv_ = create_service<GetCoarseSrv>(
       "~/get_coarse_blocks",
@@ -365,32 +298,11 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
 
     WM_LOG(
       get_logger(),
-      "PerceptionOrchestratorNode ready | trigger_policy=ON_DEMAND (single-shot run_pose_estimation) task_move_fk_tracking=%s",
-      task_move_fk_tracking_enabled_ ? "true" : "false");
-    if (refine_grasped_use_fk_roi_) {
-      WM_LOG(
-        get_logger(),
-        "REFINE_GRASPED FK+ROI enabled | tcp_frame=%s camera_frame_override=%s camera_info_topic=%s roi_size=[%.2f, %.2f]m",
-        refine_grasped_tcp_frame_.c_str(),
-        refine_grasped_camera_frame_.empty() ? "<image.header.frame_id>" : refine_grasped_camera_frame_.c_str(),
-        refine_grasped_camera_info_topic_.c_str(),
-        refine_grasped_roi_cfg_.roi_size_x_m,
-        refine_grasped_roi_cfg_.roi_size_y_m);
-      RCLCPP_INFO(
-        get_logger(),
-        "REFINE_GRASPED segmentation input: background=%s blur_kernel=%d seg_timeout=%.2fs",
-        refine_grasped_roi_cfg_.use_black_bg ? "black" : "blur",
-        refine_grasped_roi_cfg_.blur_kernel_size,
-        refine_grasped_roi_cfg_.segmentation_timeout_s);
-      RCLCPP_INFO(
-        get_logger(),
-        "REFINE_GRASPED pose fusion: enabled=%s mode=%s max_jump=%.3fm max_z_delta=%.3fm debug_log=%s",
-        refine_grasped_pose_fusion_.enabled ? "true" : "false",
-        refine_grasped_pose_fusion_.mode.c_str(),
-        refine_grasped_pose_fusion_.max_translation_jump_m,
-        refine_grasped_pose_fusion_.max_z_delta_m,
-        refine_grasped_pose_fusion_.debug_log ? "true" : "false");
-    }
+      "PerceptionOrchestratorNode ready | every run_pose_estimation mode runs on the detector at "
+      "%s | task_move_fk_tracking=%s tcp_frame=%s",
+      detector_discover_service_.c_str(),
+      task_move_fk_tracking_enabled_ ? "true" : "false",
+      refine_grasped_tcp_frame_.c_str());
 }
 
 void PerceptionOrchestratorNode::initializeSeededWorld(const cbpwm::WorldModelConfig & startup)

@@ -12,8 +12,6 @@ world_model_node:
       association_max_age_s: 20.0
       # Ignore updates below this confidence unless explicitly targeted.
       min_update_confidence: 0.25
-      # Max distance for selecting an existing block as a refine target.
-      refine_target_max_distance_m: 1.2
       # How long an unchanged /crane/collision_scene may go unrepublished, s. The scene is
       # published on change; without this it would be published on change *only*, and the topic is
       # transient-local, so the planner -- which ages it against its own max_scene_age (10 s) --
@@ -128,36 +126,8 @@ world_model_node:
         runge_length_m: 0.28
         runge_stations_m: [-2.261, -1.049, 1.935]
 
-      # ---- Overlap-merge of duplicate detections (one-shot scene discovery) ----
-      # Collapses strongly-overlapping detection boxes on the same block into a
-      # single detection with the union bounding box, so the registration cutout
-      # keeps every face (a nested duplicate box would clip the front face away).
-      scene_discovery_merge:
-        # Merge overlapping detections before building registration candidates.
-        enable: true
-        # Merge if intersection / smaller-box-area >= this (catches nested boxes).
-        containment_ratio: 0.3
-        # ...or if IoU >= this (catches partially-overlapping duplicates).
-        iou_threshold: 0.5
-
-      # ---- Advanced / experimental scene-discovery fallback ----
-      # Kept visible for ablation; normal operation should rely on registered
-      # detections instead of inserting coarse fallback poses.
-      scene_discovery_coarse_fallback:
-        # Allow scene discovery to insert coarse poses when registration fails.
-        enable: true
-        # Minimum cutout points required for a coarse fallback pose.
-        min_points: 120
-        surface_shape:
-          # BBox max(w,h)/min(w,h) <= threshold means square front face.
-          square_ratio_thresh: 1.35
-        center_offset:
-          # Shift coarse centroid away from camera along viewing ray.
-          square_m: 0.45
-          rect_m: 0.30
-
     # ----------------------------------
-    # Grasped / lifted block tracking
+    # Grasped / lifted block tracking -- and the FK state refine_grasped below shares
     # ----------------------------------
     task_move:
       # Once a block is marked TASK_MOVE, its world pose is owned by FK:
@@ -166,72 +136,17 @@ world_model_node:
         # Update TASK_MOVE blocks from TCP FK between vision refinements.
         enabled: true
 
-    # ----------------------------------
-    # Registration gating
-    # ----------------------------------
-    # Minimum registration fitness accepted by the world model.
-    min_fitness: 0.3
-    # Maximum registration RMSE accepted by the world model.
-    max_rmse: 0.05
-    # ----------------------------------
-    # Input synchronization gating
-    # ----------------------------------
-    sync:
-      # Max timestamp delta between synchronized image/cloud inputs.
-      max_delta_s: 0.08
-
-    # ----------------------------------
-    # Runtime debug/perf controls
-    # ----------------------------------
-    debug:
-      # Publish image overlays with detections and masks.
-      publish_detection_overlay: true
-      # Dump scene-discovery datasets for standalone development.
-      # One folder per one-shot frame: rgb.png (image_frame), cloud.pcd (cloud_frame),
-      # masks, metadata.yaml, registrations.yaml (block poses in world_frame), and
-      # tf.yaml (world<-image, world<-cloud, cloud<-image, and world<-each tf_frames
-      # entry, captured at the cloud stamp so each folder is self-contained).
-      scene_discovery_dump:
-        enable: true
-        dir: scene_discovery_dump
-        # Extra frames snapshotted as T_world_<frame> in tf.yaml (e.g. the crane base).
-        tf_frames: ["K0_mounting_base"]
-
-    perf:
-      # Emit periodic perception timing logs and timing topics.
-      log_timing: true
-      # Log timing summary every N processed frames.
-      log_every_n_frames: 20
-
-    # ----------------------------------
-    # Object / template selection
-    # ----------------------------------
-    # Object class name expected from segmentation and registration.
-    object_class: "concrete_block"
-
-    # ----------------------------------
-    # Grasped-block FK state (and the retired RGB REFINE_GRASPED mode)
-    # ----------------------------------
     # REFINE_GRASPED runs on the point-cloud detector: it sends the FK pose below as its
-    # prior and folds the matching detection back into the grasp offset. Only tcp_frame,
-    # tcp_to_block, grasp_offset_capture and camera_info_topic (the scene-discovery pose
-    # overlay reads those intrinsics) are still live; the ROI/segmentation/pose_fusion keys
-    # below feed the unreachable RGB one-shot pipeline and retire with it.
+    # prior and folds the matching detection back into the grasp offset. The RGB stage that
+    # used to own the rest of this block (ROI, segmentation, pose fusion) is gone.
     refine_grasped:
-      # Crop segmentation around FK-predicted grasped block pose.
-      use_fk_roi: true
-      # TCP frame used to predict the grasped block center.
+      # TCP frame the grasped block's pose is predicted from -- both for FK tracking of a
+      # TASK_MOVE block and for the prior REFINE_GRASPED sends.
       tcp_frame: "elastic/K8_tool_center_point"
-      # Optional override; if empty, use image.header.frame_id.
-      camera_frame: ""
-      # Camera intrinsics used to project FK ROI into image space.
+      # Read for its projection matrix P by the scene-discovery pose overlay, which draws
+      # block wireframes onto the rectified Blackfly image. Nothing else uses it.
       camera_info_topic: "/blackfly_rotated/camera_info"
-      # Transform from TCP frame -> predicted block center used for ROI placement.
-      # Units: xyz in meters, rpy in radians.
-      # Frame: values are expressed in tcp_frame axes.
-      # "Move down from current TCP":
-      #   if TCP +Z points up  -> use negative z (e.g. [0, 0, -0.10])
-      #   if TCP +Z points down -> use positive z (e.g. [0, 0,  0.10])
+      # Units: xyz in meters, rpy in radians, expressed in tcp_frame axes.
       # Nominal TCP->block offset. On TASK_MOVE the real offset is auto-captured from the
       # block's registered pose and the current TCP (T_world_tcp^-1 * T_world_block); this
       # nominal is only the fallback when no registered pose exists, and (when non-identity)
@@ -245,42 +160,11 @@ world_model_node:
         # Reject an auto-captured offset whose translation deviates from the nominal
         # tcp_to_block by more than this (m). Only enforced when tcp_to_block is non-identity.
         max_deviation_m: 1.0
-      # ROI size around predicted block center in meters: [x_width, y_height].
-      # Converted internally to pixels using camera intrinsics + predicted depth.
-      roi_size_m: [1.80, 1.5]
-      # Depth gate for predicted block center in camera frame [m].
-      # Rejects implausible projections before registration.
-      # Minimum allowed ROI center depth.
-      min_depth_m: 2.0
-      # Maximum allowed ROI center depth.
-      max_depth_m: 20.0
-      # Timeout for ROI segmentation service call [s].
-      segmentation_timeout_s: 3.0
-      segmentation_input:
-        # If true, use black background outside ROI.
-        # If false, use blurred original background outside ROI.
-        use_black_background: false
-        # Gaussian blur kernel (odd integer >= 1), only used when use_black_background=false.
-        blur_kernel_size: 31
-      pose_fusion:
-        # For REFINE_GRASPED:
-        # translation from registration, orientation from FK (TCP-based prediction).
-        # Fuse registered position with FK orientation.
-        enable: true
-        # Pose fusion strategy for grasped block refinement.
-        mode: "position_from_registration_orientation_from_fk"
-        # Safety gates for rejecting implausible registration jumps before world-model update.
-        # Max allowed position jump from FK prediction.
-        max_translation_jump_m: 0.35
-        # Max allowed vertical jump from FK prediction.
-        max_z_delta_m: 0.25
-        # Log pose-fusion accept/reject details.
-        debug_log: true
 
-    # REFINE_BLOCK has no RGB stage: it re-measures the target with the point-cloud
-    # detector, sending the target's world pose as the single prior and accepting the
-    # nearest detection inside that prior's tolerances. Those tolerances are the
-    # scene_discovery.priors.* parameters, declared with defaults in
-    # perception_orchestrator_node.cpp and deliberately not overridden here -- widening
-    # translation_tolerance_m past half the block pitch would let a refine write a
-    # neighbour's pose into the target.
+    # REFINE_BLOCK re-measures the target with the point-cloud detector, sending the
+    # target's world pose as the single prior and accepting the nearest detection inside
+    # that prior's tolerances. Those tolerances are the *top-level* scene_discovery.priors.*
+    # parameters -- NOT world_model.scene_discovery.*, which is a different prefix carrying the
+    # association gates -- declared with defaults in perception_orchestrator_node.cpp and
+    # deliberately not overridden here -- widening translation_tolerance_m past half the
+    # block pitch would let a refine write a neighbour's pose into the target.

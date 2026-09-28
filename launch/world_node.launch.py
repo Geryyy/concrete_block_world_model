@@ -58,32 +58,17 @@ def generate_launch_description():
                     },
                 ],
                 remappings=[
+                    # The only image consumer left is the scene-discovery pose overlay /
+                    # capture cache; the raw cloud the capture pairs with is read on the
+                    # absolute topic in scene_discovery.capture.cloud_topic.
                     ("image", "/blackfly_rotated/image_rect"),
-                    ("points", "/seyond/points"),
                     ("block_world_model", "/cbp/block_world_model"),
                     ("block_world_model_markers", "/cbp/block_world_model_markers"),
                     ("block_goal_markers", "/cbp/block_goal_markers"),
-                    ("debug/detection_overlay", "/cbp/debug/detection_overlay"),
                     (
                         "debug/scene_discovery_pose_overlay",
                         "/cbp/debug/scene_discovery_pose_overlay",
                     ),
-                    ("debug/yolo_service_debug_image", "/cbp/debug/yolo_service_debug_image"),
-                    ("debug/continuous_merged_mask", "/cbp/debug/continuous_merged_mask"),
-                    ("debug/tracking_overlay", "/cbp/debug/tracking_overlay"),
-                    ("debug/refine_grasped_roi_input", "/cbp/debug/refine_grasped_roi_input"),
-                    ("timing/continuous_seg_ms", "/cbp/timing/continuous_seg_ms"),
-                    ("timing/continuous_cutout_ms", "/cbp/timing/continuous_cutout_ms"),
-                    ("timing/continuous_coarse_ms", "/cbp/timing/continuous_coarse_ms"),
-                    (
-                        "timing/continuous_registration_ms",
-                        "/cbp/timing/continuous_registration_ms",
-                    ),
-                    ("timing/continuous_upsert_ms", "/cbp/timing/continuous_upsert_ms"),
-                    ("timing/continuous_total_ms", "/cbp/timing/continuous_total_ms"),
-                    ("timing/continuous_detections", "/cbp/timing/continuous_detections"),
-                    ("timing/continuous_accepted", "/cbp/timing/continuous_accepted"),
-                    ("timing/continuous_rejected", "/cbp/timing/continuous_rejected"),
                 ],
                 additional_env={
                     "RCUTILS_COLORIZED_OUTPUT": "1",
