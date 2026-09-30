@@ -633,6 +633,11 @@ CollisionSceneConversion toCollisionScene(
       out.dropped.push_back(named + ": the id is reserved by crane_msgs and refuses the scene");
       continue;
     }
+    // The block in the jaws is the planner's `payload`, placed per configuration; kept here
+    // too it sits on that payload and every lift reads as a collision of one block depth.
+    if (object.task_status == Block::TASK_MOVE) {
+      continue;
+    }
     if (std::find(seen_ids.begin(), seen_ids.end(), object.id) != seen_ids.end()) {
       out.dropped.push_back(named + ": the id arrived twice");
       continue;

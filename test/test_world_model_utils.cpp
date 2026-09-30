@@ -117,6 +117,19 @@ TEST(CollisionScene, StructuralFollowsTheSourceTypeInBothDirections) {
   EXPECT_FALSE(converted.scene.primitives[1].structural);
 }
 
+TEST(CollisionScene, TheCarriedBlockIsThePlannersPayloadNotAnObstacle) {
+  // Kept, it sat on the planner's `payload` and refused every lift by the block's depth.
+  auto carried = makeObject("block_carried", PlanningSceneObject::SOURCE_BLOCK);
+  carried.task_status = Block::TASK_MOVE;
+
+  const auto converted = cbpwm::toCollisionScene(
+    sceneWithBadObject(carried), mountingBaseFromWorld());
+
+  ASSERT_EQ(converted.scene.primitives.size(), 1u);
+  EXPECT_EQ(converted.scene.primitives[0].id, "block_ok");
+  EXPECT_TRUE(converted.dropped.empty());
+}
+
 TEST(CollisionScene, PoseAndFrameReachTheMountingBase) {
   const auto scene = sceneWith({makeObject("block_1", PlanningSceneObject::SOURCE_BLOCK)});
 
