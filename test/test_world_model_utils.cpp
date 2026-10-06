@@ -9,6 +9,7 @@
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
+#include "concrete_block_world_model/world_model/state_manager.hpp"
 
 namespace cbpwm = cbp::world_model;
 using concrete_block_world_model_interfaces::msg::Block;
@@ -27,6 +28,34 @@ TEST(WorldModelUtils, AssociationDistanceAndConfidenceGating) {
   EXPECT_TRUE(cbpwm::shouldAssociateByDistance(0.20, 0.45, 0.9, 0.25));
   EXPECT_FALSE(cbpwm::shouldAssociateByDistance(0.60, 0.45, 0.9, 0.25));
   EXPECT_FALSE(cbpwm::shouldAssociateByDistance(0.20, 0.45, 0.1, 0.25));
+}
+
+TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
+  // Seen once, re-observed in place a minute later (a second discovery after a survey move).
+  rclcpp::Clock clock(RCL_ROS_TIME);
+  Block seen;
+  seen.id = "block_0";
+  seen.task_status = Block::TASK_FREE;
+  seen.confidence = 1.0f;
+  seen.pose.position.x = -13.0;
+  seen.last_seen.sec = 100;
+  std_msgs::msg::Header now;
+  now.stamp.sec = 160;
+  Block again = seen;
+  again.id.clear();
+  again.last_seen = now.stamp;
+
+  const auto discover = [&](const cbpwm::AssociationConfig & config) {
+      std::unordered_map<std::string, Block> world{{"block_0", seen}};
+      uint64_t counter = 1;
+      std::string id, reason;
+      EXPECT_TRUE(cbpwm::upsertRegisteredBlock(
+          world, counter, again, now, clock, config, id, reason));
+      return id;
+    };
+  // The tracking default (20 s) registers it again under a new id: the duplicate.
+  EXPECT_EQ(discover(cbpwm::AssociationConfig{}), "block_1");
+  EXPECT_EQ(discover(cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25)), "block_0");
 }
 
 TEST(WorldModelUtils, TaskStatusToString) {

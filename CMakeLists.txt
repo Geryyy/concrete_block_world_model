@@ -90,6 +90,7 @@ if(BUILD_TESTING)
     test/test_world_model_utils.cpp
     src/utils/block_utils.cpp
     src/utils/world_model_utils.cpp
+    src/world_model/state_manager.cpp
   )
   if(TARGET test_world_model_utils)
     target_include_directories(test_world_model_utils PUBLIC
@@ -100,6 +101,7 @@ if(BUILD_TESTING)
       concrete_block_world_model_interfaces
       crane_msgs
       geometry_msgs
+      rclcpp
       std_msgs
       tf2
       tf2_geometry_msgs

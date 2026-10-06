@@ -32,6 +32,18 @@ std::string nextWorldBlockId(
   const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter);
 
+// Scene discovery re-registers blocks that do not move on their own: matched by distance
+// alone, however long ago they were seen. The 20 s tracking age made a second discovery a
+// minute later register every block again under a new id.
+inline AssociationConfig sceneDiscoveryAssociation(
+  AssociationConfig config, double max_distance_m, double min_confidence)
+{
+  config.association_max_distance_m = max_distance_m;
+  config.min_update_confidence = min_confidence;
+  config.association_max_age_s = std::numeric_limits<double>::infinity();
+  return config;
+}
+
 // Associate an anonymous detector observation with the world: nearest existing block inside
 // the association gates, or a fresh id. The refine modes do not come through here -- they
 // address a block by id and write it directly.

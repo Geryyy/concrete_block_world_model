@@ -634,11 +634,9 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
       const auto association_snapshot = persistent_world_;
       std::unordered_set<std::string> claimed_existing_ids;
       std::vector<std::pair<std::string, Block>> pending_updates;
-      auto discovery_association = associationConfig();
-      discovery_association.min_update_confidence =
-        runtime_cfg_.scene_discovery_min_detector_confidence;
-      discovery_association.association_max_distance_m =
-        runtime_cfg_.scene_discovery_association_max_distance_m;
+      const auto discovery_association = cbpwm::sceneDiscoveryAssociation(
+        associationConfig(), runtime_cfg_.scene_discovery_association_max_distance_m,
+        runtime_cfg_.scene_discovery_min_detector_confidence);
       for (std::size_t candidate_index = 0;
         candidate_index < detector_response->blocks.blocks.size(); ++candidate_index)
       {
