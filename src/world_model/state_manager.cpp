@@ -68,6 +68,10 @@ bool upsertRegisteredBlock(
 
   for (const auto & kv : persistent_world) {
     const auto & existing = kv.second;
+    // A goal-only entry (set_block_goal before discovery) is no physical block to match.
+    if (existing.pose_status == concrete_block_world_model_interfaces::msg::Block::POSE_UNKNOWN) {
+      continue;
+    }
     const rclcpp::Time seen(existing.last_seen, clock.get_clock_type());
     const double age_s = (now_stamp - seen).seconds();
     if (age_s > config.association_max_age_s) {
@@ -104,7 +108,10 @@ bool upsertRegisteredBlock(
       return false;
     }
 
-    if (!isValidTaskTransition(previous.task_status, incoming.task_status)) {
+    // An observation that does not say (TASK_UNKNOWN, scene discovery) keeps the task status.
+    if (incoming.task_status != concrete_block_world_model_interfaces::msg::Block::TASK_UNKNOWN &&
+      !isValidTaskTransition(previous.task_status, incoming.task_status))
+    {
       reason = std::string("invalid task transition ") +
         taskStatusToString(previous.task_status) + " -> " +
         taskStatusToString(incoming.task_status);

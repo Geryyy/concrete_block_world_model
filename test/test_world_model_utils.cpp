@@ -35,6 +35,7 @@ TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
   rclcpp::Clock clock(RCL_ROS_TIME);
   Block seen;
   seen.id = "block_0";
+  seen.pose_status = Block::POSE_PRECISE;
   seen.task_status = Block::TASK_FREE;
   seen.confidence = 1.0f;
   seen.pose.position.x = -13.0;
@@ -56,6 +57,22 @@ TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
   // The tracking default (20 s) registers it again under a new id: the duplicate.
   EXPECT_EQ(discover(cbpwm::AssociationConfig{}), "block_1");
   EXPECT_EQ(discover(cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25)), "block_0");
+  // Seen again after it was placed: the pose updates, the block stays placed.
+  seen.task_status = Block::TASK_PLACED;
+  {
+    std::unordered_map<std::string, Block> world{{"block_0", seen}};
+    uint64_t counter = 1;
+    std::string id, reason;
+    Block observed = again;
+    observed.task_status = Block::TASK_UNKNOWN;
+    ASSERT_TRUE(cbpwm::upsertRegisteredBlock(
+        world, counter, observed, now, clock,
+        cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25), id, reason)) << reason;
+    EXPECT_EQ(world.at("block_0").task_status, Block::TASK_PLACED);
+  }
+  // A goal-only placeholder at the same spot is not that block.
+  seen.pose_status = Block::POSE_UNKNOWN;
+  EXPECT_EQ(discover(cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25)), "block_1");
 }
 
 TEST(WorldModelUtils, TaskStatusToString) {

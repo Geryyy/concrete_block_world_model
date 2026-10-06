@@ -652,7 +652,9 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
           incoming.pose_status = Block::POSE_COARSE;
           setDefaultPoseCovariance(incoming);
         }
-        incoming.task_status = Block::TASK_FREE;
+        // What the block is doing is the world model's, not the detector's: a placed block
+        // seen again stays placed (stamping FREE had every such observation rejected).
+        incoming.task_status = Block::TASK_UNKNOWN;
         incoming.last_seen = header.stamp;
 
         // Remove already claimed prior-world entries.  This makes association
