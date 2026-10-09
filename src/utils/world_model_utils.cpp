@@ -177,7 +177,7 @@ bool truckPrimitiveFromVehicleBox(
   primitive.shape = crane_msgs::msg::CollisionScene::SHAPE_BOX;
   tf2::doTransform(normalized, primitive.pose, mounting_base_from_world);
   primitive.dimensions = dimensions;
-  // From a model, never perceived: this is the truck model of trajectory_planning 4.2.
+  // From a model, never perceived: this is the truck model of trajectory_planning 2.2.
   primitive.structural = true;
   return true;
 }

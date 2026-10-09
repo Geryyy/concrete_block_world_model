@@ -96,7 +96,7 @@ struct CollisionSceneConversion
 // The vehicle the crane is bolted to, as one configured box: pose at the vehicle's centre,
 // `dimensions` its extent in its own axes with x along the bed and z up. It leaves the world
 // model as the single primitive with the reserved id `truck`, which the planner expands into a
-// bed slab at the box's top face, the six runges of trajectory_planning 4.2 standing on it, and
+// bed slab at the box's top face, the six runges of trajectory_planning 2.2 standing on it, and
 // the headboard closing its cab end.
 // Publishing the vehicle as ordinary boxes instead would lose the runges and would report the
 // mounting base colliding with the vehicle it is part of.

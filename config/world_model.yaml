@@ -68,7 +68,7 @@ world_model_node:
       # Emitted into the collision scene as the single primitive with the id
       # `truck`, which crane_msgs reserves (ros2_interfaces 6). The planner
       # expands it into a bed slab at the box's top face, the six runges of
-      # trajectory_planning 4.2 standing on that face and the headboard closing
+      # trajectory_planning 2.2 standing on that face and the headboard closing
       # its cab end, every piece structural.
       #
       # So this box is the LOAD AREA, whose top face is the bed surface -- not
