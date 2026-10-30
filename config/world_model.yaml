@@ -32,6 +32,9 @@ world_model_node:
         - id: hedge
           position: [-6.939, 6.850, 1.461]
           dimensions: [20.0, 5.0, 3.0]
+        - id: ground
+          position: [-6.939, 0.350, -0.050]  # top face at world z 0, centred on the slewing column
+          dimensions: [40.0, 40.0, 0.1]
         # - id: post_right_1
         #   frame_id: world
         #   position: [-5.558000, 1.652500, 1.097000]
