@@ -139,15 +139,11 @@ world_model_node:
     # prior and folds the matching detection back into the grasp offset. The RGB stage that
     # used to own the rest of this block (ROI, segmentation, pose fusion) is gone.
     refine_grasped:
-      # TCP frame the grasped block's pose is predicted from -- both for FK tracking of a
-      # TASK_MOVE block and for the prior REFINE_GRASPED sends. The same frame the BT's
-      # CaptureBlockGraspOffset / MeasureBlockFromGripper / WriteBlockPoseFromGripper take the
-      # grasp offset against: applying it to a different TCP adds that TCP's whole offset to
-      # the carried pose. Rigid, though the real crane does publish elastic/K8_tool_center_point
-      # and the boom bend would then be tracked: the BT's frame is a literal in the tree, the
-      # sim publishes no elastic/ frame at all, and one frame in both beats the better frame in
-      # one of them (issue 281). On hardware that costs the bend *change* between two
-      # measurements; the mismatch it removes was the whole bend.
+      # TCP frame the grasped block's pose is predicted from -- FK tracking of a TASK_MOVE
+      # block and the prior REFINE_GRASPED sends. Must be the frame the BT captures the grasp
+      # offset against (a literal in subtree_pick/place_block.xml), or the whole rigid->elastic
+      # offset lands in the carried pose. Rigid even on hardware, where elastic/ exists and
+      # would track the boom bend: the sim publishes no elastic/ frames.
       tcp_frame: "K8_tool_center_point"
       # Read for its projection matrix P by the scene-discovery pose overlay, which draws
       # block wireframes onto the rectified Blackfly image. Nothing else uses it.
