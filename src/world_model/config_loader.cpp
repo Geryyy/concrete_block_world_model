@@ -337,15 +337,9 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
   cfg.world_frame = node.declare_parameter<std::string>("world_frame", "world");
   cfg.association_max_distance_m =
     node.declare_parameter<double>("world_model.association_max_distance_m", 0.45);
-  cfg.association_max_age_s = node.declare_parameter<double>(
-    "world_model.association_max_age_s",
-    20.0);
-  cfg.min_update_confidence = node.declare_parameter<double>(
-    "world_model.min_update_confidence",
-    0.25);
   cfg.scene_discovery_min_detector_confidence = node.declare_parameter<double>(
     "world_model.scene_discovery.min_detector_confidence",
-    cfg.min_update_confidence);
+    0.25);
   cfg.scene_discovery_association_max_distance_m = node.declare_parameter<double>(
     "world_model.scene_discovery.association_max_distance_m",
     cfg.association_max_distance_m);
@@ -366,7 +360,7 @@ WorldModelConfig loadWorldModelConfig(rclcpp::Node & node)
     "world_model.collision_scene_heartbeat_s", 2.0);
 
   cfg.refine_grasped_tcp_frame =
-    node.declare_parameter<std::string>("refine_grasped.tcp_frame", "elastic/K8_tool_center_point");
+    node.declare_parameter<std::string>("refine_grasped.tcp_frame", "K8_tool_center_point");
   cfg.refine_grasped_camera_info_topic = node.declare_parameter<std::string>(
     "refine_grasped.camera_info_topic", "/blackfly_rotated/camera_info");
   cfg.refine_grasped_tcp_to_block_xyz =
@@ -433,8 +427,6 @@ void normalizeWorldModelConfig(rclcpp::Logger logger, WorldModelConfig & cfg)
       }
     };
   clamp_min(cfg.association_max_distance_m, 0.01, "world_model.association_max_distance_m");
-  clamp_min(cfg.association_max_age_s, 0.1, "world_model.association_max_age_s");
-  clamp_min(cfg.min_update_confidence, 0.0, "world_model.min_update_confidence");
   clamp_min(
     cfg.scene_discovery_min_detector_confidence, 0.0,
     "world_model.scene_discovery.min_detector_confidence");

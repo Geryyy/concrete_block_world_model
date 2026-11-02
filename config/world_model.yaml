@@ -8,10 +8,6 @@ world_model_node:
       block_dimensions_m: [0.9, 0.6, 0.6]
       # Default max distance for matching an incoming observation to a known block.
       association_max_distance_m: 0.45
-      # Default max age for a known block to be considered for association.
-      association_max_age_s: 20.0
-      # Ignore updates below this confidence unless explicitly targeted.
-      min_update_confidence: 0.25
       # How long an unchanged /crane/collision_scene may go unrepublished, s. The scene is
       # published on change; without this it would be published on change *only*, and the topic is
       # transient-local, so the planner -- which ages it against its own max_scene_age (10 s) --
@@ -144,8 +140,15 @@ world_model_node:
     # used to own the rest of this block (ROI, segmentation, pose fusion) is gone.
     refine_grasped:
       # TCP frame the grasped block's pose is predicted from -- both for FK tracking of a
-      # TASK_MOVE block and for the prior REFINE_GRASPED sends.
-      tcp_frame: "elastic/K8_tool_center_point"
+      # TASK_MOVE block and for the prior REFINE_GRASPED sends. The same frame the BT's
+      # CaptureBlockGraspOffset / MeasureBlockFromGripper / WriteBlockPoseFromGripper take the
+      # grasp offset against: applying it to a different TCP adds that TCP's whole offset to
+      # the carried pose. Rigid, though the real crane does publish elastic/K8_tool_center_point
+      # and the boom bend would then be tracked: the BT's frame is a literal in the tree, the
+      # sim publishes no elastic/ frame at all, and one frame in both beats the better frame in
+      # one of them (issue 281). On hardware that costs the bend *change* between two
+      # measurements; the mismatch it removes was the whole bend.
+      tcp_frame: "K8_tool_center_point"
       # Read for its projection matrix P by the scene-discovery pose overlay, which draws
       # block wireframes onto the rectified Blackfly image. Nothing else uses it.
       camera_info_topic: "/blackfly_rotated/camera_info"

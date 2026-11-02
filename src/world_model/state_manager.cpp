@@ -1,6 +1,7 @@
 #include "concrete_block_world_model/world_model/state_manager.hpp"
 
 #include <cmath>
+#include <limits>
 
 namespace cbp::world_model
 {
@@ -50,13 +51,11 @@ bool upsertRegisteredBlock(
   std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
   concrete_block_world_model_interfaces::msg::Block incoming,
-  const std_msgs::msg::Header & header,
   const rclcpp::Clock & clock,
   const AssociationConfig & config,
   std::string & assigned_id,
   std::string & reason)
 {
-  const rclcpp::Time now_stamp(header.stamp, clock.get_clock_type());
   if (incoming.confidence < config.min_update_confidence) {
     reason = "confidence below min_update_confidence";
     return false;
@@ -72,12 +71,6 @@ bool upsertRegisteredBlock(
     if (existing.pose_status == concrete_block_world_model_interfaces::msg::Block::POSE_UNKNOWN) {
       continue;
     }
-    const rclcpp::Time seen(existing.last_seen, clock.get_clock_type());
-    const double age_s = (now_stamp - seen).seconds();
-    if (age_s > config.association_max_age_s) {
-      continue;
-    }
-
     const double dist = blockDistance(incoming, existing);
     if (!shouldAssociateByDistance(
         dist, config.association_max_distance_m, incoming.confidence,

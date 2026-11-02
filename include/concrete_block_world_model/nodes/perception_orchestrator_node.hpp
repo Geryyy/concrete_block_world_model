@@ -69,8 +69,6 @@ class PerceptionOrchestratorNode : public rclcpp::Node
   struct RuntimeConfig
   {
     double association_max_distance_m{0.45};
-    double association_max_age_s{20.0};
-    double min_update_confidence{0.25};
     double scene_discovery_min_detector_confidence{0.25};
     double scene_discovery_association_max_distance_m{0.45};
   };
@@ -273,7 +271,7 @@ private:
   double scene_discovery_prior_translation_tolerance_m_{0.35};
   double scene_discovery_prior_orientation_tolerance_rad_{0.70};
   bool task_move_fk_tracking_enabled_{true};
-  std::string refine_grasped_tcp_frame_{"elastic/K8_tool_center_point"};
+  std::string refine_grasped_tcp_frame_{"K8_tool_center_point"};
   std::string refine_grasped_camera_info_topic_{"/blackfly_rotated/camera_info"};
   // Nominal TCP->block offset from config (refine_grasped.tcp_to_block). Repurposed as a
   // fallback when no registered pose is available to auto-capture from, and as a

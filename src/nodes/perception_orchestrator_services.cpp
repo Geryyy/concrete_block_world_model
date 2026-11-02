@@ -667,7 +667,7 @@ bool PerceptionOrchestratorNode::runDetectorSceneDiscovery(
         std::string assigned_id;
         std::string reason;
         if (cbpwm::upsertRegisteredBlock(
-            candidate_world, world_block_counter_, incoming, header, *get_clock(),
+            candidate_world, world_block_counter_, incoming, *get_clock(),
             discovery_association, assigned_id, reason))
         {
           if (association_snapshot.find(assigned_id) != association_snapshot.end()) {

@@ -51,11 +51,10 @@ TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
       uint64_t counter = 1;
       std::string id, reason;
       EXPECT_TRUE(cbpwm::upsertRegisteredBlock(
-          world, counter, again, now, clock, config, id, reason));
+          world, counter, again, clock, config, id, reason));
       return id;
     };
-  // The tracking default (20 s) registers it again under a new id: the duplicate.
-  EXPECT_EQ(discover(cbpwm::AssociationConfig{}), "block_1");
+  // Seen a minute later, it is still the same block.
   EXPECT_EQ(discover(cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25)), "block_0");
   // Seen again after it was placed: the pose updates, the block stays placed.
   seen.task_status = Block::TASK_PLACED;
@@ -66,7 +65,7 @@ TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
     Block observed = again;
     observed.task_status = Block::TASK_UNKNOWN;
     ASSERT_TRUE(cbpwm::upsertRegisteredBlock(
-        world, counter, observed, now, clock,
+        world, counter, observed, clock,
         cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25), id, reason)) << reason;
     EXPECT_EQ(world.at("block_0").task_status, Block::TASK_PLACED);
   }

@@ -35,8 +35,6 @@ struct WorldModelConfig
 {
   std::string world_frame{"world"};
   double association_max_distance_m{0.45};
-  double association_max_age_s{20.0};
-  double min_update_confidence{0.25};
   double scene_discovery_min_detector_confidence{0.25};
   double scene_discovery_association_max_distance_m{0.45};
   bool task_move_fk_tracking_enabled{true};
@@ -55,7 +53,7 @@ struct WorldModelConfig
   // What is left of `refine_grasped`: the TCP frame FK tracking and the REFINE_GRASPED prior
   // are built from, the nominal grasp offset and its plausibility bound, and the camera_info
   // topic the scene-discovery pose overlay takes its projection from.
-  std::string refine_grasped_tcp_frame{"elastic/K8_tool_center_point"};
+  std::string refine_grasped_tcp_frame{"K8_tool_center_point"};
   std::string refine_grasped_camera_info_topic{"/blackfly_rotated/camera_info"};
   std::vector<double> refine_grasped_tcp_to_block_xyz{0.0, 0.0, 0.0};
   std::vector<double> refine_grasped_tcp_to_block_rpy{0.0, 0.0, 0.0};

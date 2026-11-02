@@ -16,8 +16,6 @@ PerceptionOrchestratorNode::PerceptionOrchestratorNode()
     cbpwm::normalizeWorldModelConfig(get_logger(), startup);
     world_frame_ = startup.world_frame;
     runtime_cfg_.association_max_distance_m = startup.association_max_distance_m;
-    runtime_cfg_.association_max_age_s = startup.association_max_age_s;
-    runtime_cfg_.min_update_confidence = startup.min_update_confidence;
     runtime_cfg_.scene_discovery_min_detector_confidence =
       startup.scene_discovery_min_detector_confidence;
     runtime_cfg_.scene_discovery_association_max_distance_m =

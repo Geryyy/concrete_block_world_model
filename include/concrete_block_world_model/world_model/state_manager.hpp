@@ -1,11 +1,9 @@
 #pragma once
 
-#include <limits>
 #include <string>
 #include <unordered_map>
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/header.hpp>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
@@ -16,7 +14,6 @@ namespace cbp::world_model
 struct AssociationConfig
 {
   double association_max_distance_m{0.45};
-  double association_max_age_s{20.0};
   double min_update_confidence{0.25};
 };
 
@@ -32,26 +29,24 @@ std::string nextWorldBlockId(
   const std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter);
 
-// Scene discovery re-registers blocks that do not move on their own: matched by distance
-// alone, however long ago they were seen. The 20 s tracking age made a second discovery a
-// minute later register every block again under a new id.
+// Scene discovery's own gates, the only ones this struct ever carries.
 inline AssociationConfig sceneDiscoveryAssociation(
   AssociationConfig config, double max_distance_m, double min_confidence)
 {
   config.association_max_distance_m = max_distance_m;
   config.min_update_confidence = min_confidence;
-  config.association_max_age_s = std::numeric_limits<double>::infinity();
   return config;
 }
 
 // Associate an anonymous detector observation with the world: nearest existing block inside
-// the association gates, or a fresh id. The refine modes do not come through here -- they
-// address a block by id and write it directly.
+// the association gates, or a fresh id. Matched by distance alone, however long ago the block
+// was seen -- blocks do not move on their own, and a 20 s age gate had a second discovery a
+// minute later register every one of them again under a new id. The refine modes do not come
+// through here -- they address a block by id and write it directly.
 bool upsertRegisteredBlock(
   std::unordered_map<std::string, concrete_block_world_model_interfaces::msg::Block> & persistent_world,
   uint64_t & world_block_counter,
   concrete_block_world_model_interfaces::msg::Block incoming,
-  const std_msgs::msg::Header & header,
   const rclcpp::Clock & clock,
   const AssociationConfig & config,
   std::string & assigned_id,

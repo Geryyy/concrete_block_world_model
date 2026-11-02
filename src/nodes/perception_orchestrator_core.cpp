@@ -31,8 +31,6 @@ cbpwm::AssociationConfig PerceptionOrchestratorNode::associationConfig() const
   {
     cbpwm::AssociationConfig cfg;
     cfg.association_max_distance_m = runtime_cfg_.association_max_distance_m;
-    cfg.association_max_age_s = runtime_cfg_.association_max_age_s;
-    cfg.min_update_confidence = runtime_cfg_.min_update_confidence;
     return cfg;
   }
 
