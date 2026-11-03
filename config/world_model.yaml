@@ -22,9 +22,9 @@ world_model_node:
         # which collision_body_handler published in K0_mounting_base, not world:
         #   world = (-6.939 - k0_x, 0.350 - k0_y, 1.141 + k0_z) at the recorded truck pose.
         # Re-measure them for a real site -- these are the old site's geometry.
-        - id: container
-          position: [-9.439, -10.650, 2.461]
-          dimensions: [7.0, 4.0, 5.0]
+        - id: container  # occupied office: 0.5 m inflated, 15 m tall so no move passes over it
+          position: [-9.439, -10.650, 7.500]
+          dimensions: [8.0, 5.0, 15.0]
         - id: hedge
           position: [-6.939, 6.850, 1.461]
           dimensions: [20.0, 5.0, 3.0]
