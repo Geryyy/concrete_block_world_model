@@ -26,14 +26,14 @@ world_model_node:
         #   confidence: 1.0
         - id: block_1
           frame_id: world
-          position: [-3.5, -0.2, 1.62]
+          position: [-2.4, -0.2, 1.62]  # picked first, from the start pose
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_2
           frame_id: world
-          position: [-2.17, -0.2, 1.62]
+          position: [-3.5, -0.2, 1.62]  # from the wall side x -2.6..-3.5 only; 1.1 m apart for the open jaws
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
