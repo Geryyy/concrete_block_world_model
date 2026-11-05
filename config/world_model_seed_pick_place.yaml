@@ -19,35 +19,35 @@ world_model_node:
       initial_blocks: |
         - id: block_0
           frame_id: world
-          position: [-13.0, 0.0, 0.3]
+          position: [-13.0, 2.0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_1
           frame_id: world
-          position: [-14.0, 0.0, 0.3]
+          position: [-14.0, 2.0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_2
           frame_id: world
-          position: [-15.0, 0.0, 0.3]
+          position: [-15.0, 2.0, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_3
           frame_id: world
-          position: [-11.0, -1.5, 0.3]
+          position: [-11.0, 0.5, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_4
           frame_id: world
-          position: [-13.0, -1.5, 0.3]
+          position: [-13.0, 0.5, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE

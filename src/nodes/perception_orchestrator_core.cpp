@@ -185,7 +185,7 @@ void PerceptionOrchestratorNode::publishCollisionScene(const PlanningScene & sce
       // changes that are.
       return;
     }
-    RCLCPP_INFO(
+    RCLCPP_DEBUG(
       get_logger(),
       "Published collision scene: primitives=%zu dropped=%zu frame=%s",
       converted.scene.primitives.size(),
