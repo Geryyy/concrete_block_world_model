@@ -223,7 +223,11 @@ void PerceptionOrchestratorNode::updateTaskMoveBlocksFromFk(const std_msgs::msg:
     it->second.pose = cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block);
     it->second.pose_status = Block::POSE_PRECISE;
     it->second.confidence = 1.0f;
-    it->second.last_seen = header.stamp;
+    // last_seen deliberately untouched: this is a prediction, not an observation, and it runs
+    // on the marker timer at now(). Restamping it put every carried block permanently ahead of
+    // any cloud stamp, so upsertRegisteredBlock rejected -- and dropped -- every detection that
+    // associated to one as "stale update" (292), and resolveGraspedBlockId's newest-last_seen
+    // tie-break between two carried blocks came down to map order.
     setDiagonalPoseCovariance(
       it->second,
       kPrecisePositionSigmaMinM,

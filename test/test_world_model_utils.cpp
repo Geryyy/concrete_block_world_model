@@ -74,6 +74,41 @@ TEST(SceneDiscovery, AReobservedBlockKeepsItsIdHoweverLongAgoItWasSeen) {
   EXPECT_EQ(discover(cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25)), "block_1");
 }
 
+TEST(SceneDiscovery, TheCarriedBlockTakesItsOwnObservationRatherThanADuplicate) {
+  // 292: a carried block's last_seen must stay the grasp stamp. FK restamping it with now()
+  // put it permanently ahead of the detector's cloud stamp, so this call rejected -- and
+  // dropped -- every detection that associated to one. The observation has to land on the
+  // block, not beside it: the gripper self-filter deliberately keeps the clamped block in the
+  // cloud, and a second TASK_FREE copy of it would be both a collision primitive under the
+  // hover and a free pickup candidate for the plan server.
+  rclcpp::Clock clock(RCL_ROS_TIME);
+  Block carried;
+  carried.id = "block_a";
+  carried.pose_status = Block::POSE_PRECISE;
+  carried.task_status = Block::TASK_MOVE;
+  carried.confidence = 1.0f;
+  carried.pose.position.x = -13.0;
+  carried.last_seen.sec = 100;  // stamped at the grasp
+
+  Block observed;
+  observed.pose_status = Block::POSE_PRECISE;
+  observed.task_status = Block::TASK_UNKNOWN;  // what scene discovery sends
+  observed.confidence = 0.9f;
+  observed.pose.position.x = -13.0;
+  observed.last_seen.sec = 160;  // the detector's cloud stamp
+
+  std::unordered_map<std::string, Block> world{{"block_a", carried}};
+  uint64_t counter = 0;
+  std::string id, reason;
+  ASSERT_TRUE(
+    cbpwm::upsertRegisteredBlock(
+      world, counter, observed, clock,
+      cbpwm::sceneDiscoveryAssociation({}, 0.45, 0.25), id, reason)) << reason;
+  EXPECT_EQ(id, "block_a");
+  EXPECT_EQ(world.size(), 1U);
+  EXPECT_EQ(world.at("block_a").task_status, Block::TASK_MOVE);
+}
+
 TEST(WorldModelUtils, TaskStatusToString) {
   EXPECT_STREQ(cbpwm::taskStatusToString(Block::TASK_FREE), "TASK_FREE");
   EXPECT_STREQ(cbpwm::taskStatusToString(Block::TASK_MOVE), "TASK_MOVE");
