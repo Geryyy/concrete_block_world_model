@@ -458,23 +458,24 @@ TEST(ShippedWorldModelConfig, TheSeibersdorfSeedIsACentredCrosswiseStack) {
   EXPECT_DOUBLE_EQ(ground[0][2], 0.3);
   EXPECT_DOUBLE_EQ(ground[1][2], 0.3);
   EXPECT_DOUBLE_EQ(top[0][2], 0.9);
-  // The pair lies along y, 20 mm apart, so the two collision boxes share no face. The extents
-  // below are this yaw pair's, hence both halves of the claim.
+  // The pair lies end to end along x, 20 mm apart: the jaws close along y, so a pair side by
+  // side along y could not be gripped (324). The extents below are this yaw pair's.
   EXPECT_DOUBLE_EQ(ground[0][3], 0.0);
   EXPECT_DOUBLE_EQ(ground[1][3], 0.0);
   EXPECT_DOUBLE_EQ(std::abs(top[0][3]), 90.0);
-  EXPECT_NEAR(std::abs(ground[0][1] - ground[1][1]), 0.62, 1e-9);
+  EXPECT_NEAR(std::abs(ground[0][0] - ground[1][0]), 0.92, 1e-9);
+  EXPECT_DOUBLE_EQ(ground[0][1], ground[1][1]);
   // Centred on the pair in both axes.
   EXPECT_NEAR(top[0][0], 0.5 * (ground[0][0] + ground[1][0]), 1e-9);
   EXPECT_NEAR(top[0][1], 0.5 * (ground[0][1] + ground[1][1]), 1e-9);
 
-  // Fully supported: the crosswise 0.6 x 0.9 footprint inside the pair's x span, and 0.44 m of
-  // its 0.9 over each of them, the rest being the gap.
+  // Bridging the joint: 0.29 m of the crosswise block's 0.6 x-width on each, and its 0.9
+  // y-length spans each block's 0.6 width.
   for (const auto & block : ground) {
-    EXPECT_LE(std::abs(top[0][0] - block[0]) + 0.3, 0.45);
     EXPECT_NEAR(
-      std::min(block[1] + 0.3, top[0][1] + 0.45) -
-      std::max(block[1] - 0.3, top[0][1] - 0.45), 0.44, 1e-9);
+      std::min(block[0] + 0.45, top[0][0] + 0.3) -
+      std::max(block[0] - 0.45, top[0][0] - 0.3), 0.29, 1e-9);
+    EXPECT_LE(std::abs(top[0][1] - block[1]) + 0.3, 0.45);
   }
 }
 

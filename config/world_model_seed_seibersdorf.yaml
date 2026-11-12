@@ -1,4 +1,4 @@
-# The storage as it stands at Seibersdorf: two blocks side by side on the ground, one
+# The storage as it stands at Seibersdorf: two blocks end to end on the ground, one
 # across them on top, next to the hedge (user, 2026-11-12). The only seed with two layers --
 # the top block has to come off first.
 #
@@ -24,10 +24,10 @@
 # Hedge near face is world y 5.35 (config/world_model.yaml): the pile keeps 1.4 m of it.
 #
 # LAYOUT, derived from the origin:
-#   ground pair side by side along y, pitch 0.62 -- 20 mm of gap, so the two collision boxes
-#   do not share a face. z 0.3 = h/2 on ground whose top face is world z 0 (world_model.yaml).
-#   top block crosswise (yaw 90), centred on the pair in both axes: it spans y 0.9 of the
-#   pair's 1.22 and x 0.6 of their 0.9.
+#   ground pair end to end along x (long axes in line), pitch 0.92 -- 20 mm of gap. Not side
+#   by side along y: y is the jaws' closing direction and the paddle cannot reach between
+#   two long faces 20 mm apart (324). z 0.3 = h/2 on ground whose top face is world z 0 (world_model.yaml).
+#   top block crosswise (yaw 90), centred over the joint: 0.29 m of it bears on each.
 #   z 0.9 = 0.3 + h, which is the sim: the Gazebo block is a plain box. A seated block would
 #   also be at 0.9 -- recess 60 deep against a 50 stud, so blocks bear on their faces
 #   (wiki/concrete_block.md) -- but this one is not seated. The stud grid is a uniform 300
@@ -47,14 +47,14 @@ world_model_node:
       initial_blocks: |
         - id: block_1
           frame_id: world
-          position: [-11.0, 3.61, 0.3]
+          position: [-10.54, 3.3, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
         - id: block_2
           frame_id: world
-          position: [-11.0, 2.99, 0.3]
+          position: [-11.46, 3.3, 0.3]
           yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
