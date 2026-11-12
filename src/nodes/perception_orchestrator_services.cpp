@@ -24,11 +24,11 @@ namespace
 constexpr double kDetectorPositionSigmaM = 0.05;
 constexpr double kDetectorOrientationSigmaRad = 0.15;
 
-// Weight of the FK prior REFINE_GRASPED sends. Fixed rather than taken from a scene-discovery
-// knob: it is the detector's own pose_priors.fk.weight, i.e. the value every recorded
-// measurement of a carried block was taken at, and a zero here would silently turn
-// REFINE_GRASPED into an unprimed scene discovery.
-constexpr double kGraspedFkPriorWeight = 0.35;
+// Weight of a prior sent to seed a hypothesis -- REFINE_GRASPED, and the post-place
+// REFINE_BLOCK. Fixed rather than taken from a scene-discovery knob: it is the detector's own
+// pose_priors.fk.weight, i.e. the value every recorded measurement of a carried block was
+// taken at, and a zero here would silently turn those calls into an unprimed scene discovery.
+constexpr double kFkSeedPriorWeight = 0.35;
 
 int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
 {
@@ -744,7 +744,20 @@ bool PerceptionOrchestratorNode::runDetectorRefineBlock(
     // One prior, the target's own believed pose: it resolves which cuboid hypothesis the
     // detector should prefer where the block is expected, and says nothing about the rest
     // of the scene.
+    //
+    // For a block the gripper has just set down, source "fk" is load-bearing, not a label,
+    // for the same reason as in REFINE_GRASPED below: the detector only lets a prior *seed* a
+    // hypothesis when it is sourced "fk". A block in the wall row shows the sensor one end
+    // face, clusters below cluster_min_extent_xy and so proposes nothing; seeded it comes
+    // back at geometry score 0.89-0.92, unseeded there is no candidate within 0.35 m at all
+    // and the mandatory post-place refine aborts the goal (326). Only TASK_PLACED, whose
+    // pose WriteBlockPoseFromGripper wrote from FK seconds earlier -- a TASK_FREE target is
+    // the pre-descent check, where "no detection, no descent" (303) is the whole point and a
+    // seed off the world model's own stale belief would defeat it.
+    const bool just_placed = target.task_status == Block::TASK_PLACED;
     std::vector<PosePrior> priors{
+      just_placed ?
+      makePosePrior("fk", target.pose, kFkSeedPriorWeight) :
       makePosePrior(
         "registered_block:" + target_block_id, target.pose,
         scene_discovery_registered_prior_weight_)};
@@ -860,7 +873,7 @@ bool PerceptionOrchestratorNode::runDetectorRefineGrasped(
 
     std::vector<PosePrior> priors{
       makePosePrior(
-        "fk", cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block), kGraspedFkPriorWeight)};
+        "fk", cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block), kFkSeedPriorWeight)};
 
     DiscoverBlocksSrv::Response::SharedPtr detector_response;
     if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {
