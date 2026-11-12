@@ -1,0 +1,71 @@
+# The storage as it stands at Seibersdorf: two blocks side by side on the ground, one
+# across them on top, next to the hedge (user, 2026-11-12). The only seed with two layers --
+# the top block has to come off first.
+#
+# ONE source of truth for both Gazebo and the world model:
+#   * world_model_node reads `world_model.initial_blocks` from here (markers + GetCoarseBlocks)
+#   * gazebo_block_spawner.py reads the same `initial_blocks` and spawns each in Gazebo
+# The wall-assembly launch splits those: `seed_file:=` is what Gazebo spawns,
+# `world_model_seed_file:=` what the world model is told, so pair this with seed_none for a
+# discovery-only run.
+#
+# FRAME: world, as world_model_seed_pick_place.yaml -- see that file for why.
+# Block dimensions: 0.9 x 0.6 x 0.6 m (X=depth, Y, Z=height), wiki/concrete_block.md.
+#
+# GROUP ORIGIN [-11.0, 3.3] world, yaw 0 deg -- the pile centre, on the ground.
+# These are comments, not parameters: `initial_blocks` is one opaque YAML string and nothing
+# interpolates into it. To move the pile, re-derive the three positions below from them.
+# The 11-09 stacking bags carry no storage group -- `/cbp/block_world_model` in all three
+# (records/2026-11-09_{15-43-38,16-04-25}-stacking, 16-16-56-stacking_mpc) holds 2-3 single
+# blocks flat on the ground, never a stack. The origin is the pickup area they do show next to
+# the hedge instead: first message of each bag, block_0 at (-10.912, 3.322) yaw -178.8 and
+# (-11.359, 3.317) yaw -176.1, block_2 at (-10.378, 3.235) yaw -95.5. Two of the three lie
+# long-axis along x, the third across it, so the pile's yaw is a choice, not a measurement.
+# Hedge near face is world y 5.35 (config/world_model.yaml): the pile keeps 1.4 m of it.
+#
+# LAYOUT, derived from the origin:
+#   ground pair side by side along y, pitch 0.62 -- 20 mm of gap, so the two collision boxes
+#   do not share a face. z 0.3 = h/2 on ground whose top face is world z 0 (world_model.yaml).
+#   top block crosswise (yaw 90), centred on the pair in both axes: it spans y 0.9 of the
+#   pair's 1.22 and x 0.6 of their 0.9.
+#   z 0.9 = 0.3 + h, which is the sim: the Gazebo block is a plain box. A seated block would
+#   also be at 0.9 -- recess 60 deep against a 50 stud, so blocks bear on their faces
+#   (wiki/concrete_block.md) -- but this one is not seated. The stud grid is a uniform 300
+#   pitch, 150 from the edges, so a block turned 90 deg engages only if it is also offset by
+#   (+-0.15, +-0.15); centred, it rests on the stud tops and the real pile's top block sits
+#   0.05 higher than this file says. Nothing models that: the sim must agree with itself, and
+#   on site these poses come from scene discovery, not from here.
+#
+# The pile is wall_plans.yaml `wall_2_1` ("two on the ground, one bridging them") worth of
+# blocks, and its bindings are c0_b0: block_0, c0_b1: block_1, c1_b0: block_2. block_0 is the
+# top block here so that plan's sequence order is also a legal pick order; 324 adds the rule
+# that enforces it rather than relying on the numbering.
+world_model_node:
+  ros__parameters:
+    world_frame: world
+    world_model:
+      initial_blocks: |
+        - id: block_1
+          frame_id: world
+          position: [-11.0, 3.61, 0.3]
+          yaw_deg: 0.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
+          confidence: 1.0
+        - id: block_2
+          frame_id: world
+          position: [-11.0, 2.99, 0.3]
+          yaw_deg: 0.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
+          confidence: 1.0
+        # Last, and it has to be: the spawner spawns in file order, each block
+        # `spawn_height_offset` above its seed pose, so a top block spawned first falls to
+        # the ground and the two below land on it.
+        - id: block_0
+          frame_id: world
+          position: [-11.0, 3.3, 0.9]
+          yaw_deg: 90.0
+          pose_status: POSE_PRECISE
+          task_status: TASK_FREE
+          confidence: 1.0

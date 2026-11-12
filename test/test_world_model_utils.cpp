@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -411,6 +413,69 @@ TEST(ShippedWorldModelConfig, DescribesTheVehicleInExactlyOnePlace) {
   ASSERT_EQ(converted.scene.primitives.size(), 1u);
   EXPECT_EQ(converted.scene.primitives[0].id, std::string(cbpwm::kReservedTruckId));
   EXPECT_TRUE(converted.scene.primitives[0].structural);
+}
+
+// The Seibersdorf seed is the only two-layer one, and its whole point is a top block that has to
+// come off first -- so the geometry, not just the parse, is the contract: a crosswise block
+// centred on two on the ground, bearing equally on both. Off-centre it slides, and the pick-order
+// rule downstream has nothing to be a rule about.
+TEST(ShippedWorldModelConfig, TheSeibersdorfSeedIsACentredCrosswiseStack) {
+  const YAML::Node root = YAML::LoadFile(CBP_SEIBERSDORF_SEED_PATH);
+  const YAML::Node blocks = YAML::Load(
+    root["world_model_node"]["ros__parameters"]["world_model"]["initial_blocks"]
+    .as<std::string>(""));
+  ASSERT_TRUE(blocks && blocks.IsSequence());
+  ASSERT_EQ(blocks.size(), 3u);
+
+  // A frame_id the file's own world_frame does not match is skipped by both readers, with a
+  // warning and an otherwise empty world -- so compare against the file, not against "world".
+  const std::string world_frame =
+    root["world_model_node"]["ros__parameters"]["world_frame"].as<std::string>("");
+  EXPECT_EQ(world_frame, "world");
+
+  std::vector<std::string> ids;                 // file order: the spawner's drop order
+  std::vector<std::array<double, 4>> ground;    // x, y, z, yaw_deg
+  std::vector<std::array<double, 4>> top;
+  for (std::size_t idx = 0; idx < blocks.size(); ++idx) {
+    const YAML::Node block = blocks[idx];
+    ids.push_back(block["id"].as<std::string>(""));
+    EXPECT_EQ(block["frame_id"].as<std::string>(""), world_frame);
+    EXPECT_EQ(block["pose_status"].as<std::string>(""), "POSE_PRECISE");
+    EXPECT_EQ(block["task_status"].as<std::string>(""), "TASK_FREE");
+    const std::array<double, 4> pose{
+      block["position"][0].as<double>(), block["position"][1].as<double>(),
+      block["position"][2].as<double>(), block["yaw_deg"].as<double>(0.0)};
+    (pose[2] > 0.6 ? top : ground).push_back(pose);
+  }
+  ASSERT_EQ(ground.size(), 2u);
+  ASSERT_EQ(top.size(), 1u);
+  // block_0 on top, so wall_2_1's sequence order is also a legal pick order -- and last in the
+  // file, because the spawner drops each block from `spawn_height_offset` in file order.
+  EXPECT_EQ(ids.back(), "block_0");
+
+  // In sim the pitch is h: the Gazebo block is a plain box. On the real pile the crosswise
+  // block's recesses miss the 300-pitch studs, so it rests 50 mm higher -- see the seed file.
+  EXPECT_DOUBLE_EQ(ground[0][2], 0.3);
+  EXPECT_DOUBLE_EQ(ground[1][2], 0.3);
+  EXPECT_DOUBLE_EQ(top[0][2], 0.9);
+  // The pair lies along y, 20 mm apart, so the two collision boxes share no face. The extents
+  // below are this yaw pair's, hence both halves of the claim.
+  EXPECT_DOUBLE_EQ(ground[0][3], 0.0);
+  EXPECT_DOUBLE_EQ(ground[1][3], 0.0);
+  EXPECT_DOUBLE_EQ(std::abs(top[0][3]), 90.0);
+  EXPECT_NEAR(std::abs(ground[0][1] - ground[1][1]), 0.62, 1e-9);
+  // Centred on the pair in both axes.
+  EXPECT_NEAR(top[0][0], 0.5 * (ground[0][0] + ground[1][0]), 1e-9);
+  EXPECT_NEAR(top[0][1], 0.5 * (ground[0][1] + ground[1][1]), 1e-9);
+
+  // Fully supported: the crosswise 0.6 x 0.9 footprint inside the pair's x span, and 0.44 m of
+  // its 0.9 over each of them, the rest being the gap.
+  for (const auto & block : ground) {
+    EXPECT_LE(std::abs(top[0][0] - block[0]) + 0.3, 0.45);
+    EXPECT_NEAR(
+      std::min(block[1] + 0.3, top[0][1] + 0.45) -
+      std::max(block[1] - 0.3, top[0][1] - 0.45), 0.44, 1e-9);
+  }
 }
 
 // A blockless world -- a fresh seed_none profile, or one just cleared through clear_world_model

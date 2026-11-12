@@ -110,7 +110,8 @@ if(BUILD_TESTING)
     # The shipped config is an oracle here: the vehicle has to be described in exactly one place,
     # which is a claim about the file and not about any function.
     target_compile_definitions(test_world_model_utils PRIVATE
-      CBP_WORLD_MODEL_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/world_model.yaml")
+      CBP_WORLD_MODEL_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/world_model.yaml"
+      CBP_SEIBERSDORF_SEED_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/world_model_seed_seibersdorf.yaml")
     target_link_libraries(test_world_model_utils yaml-cpp Eigen3::Eigen)
   endif()
 
