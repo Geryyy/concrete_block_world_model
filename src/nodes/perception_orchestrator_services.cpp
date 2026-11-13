@@ -30,6 +30,14 @@ constexpr double kDetectorOrientationSigmaRad = 0.15;
 // taken at, and a zero here would silently turn those calls into an unprimed scene discovery.
 constexpr double kFkSeedPriorWeight = 0.35;
 
+// What the detector may do with a prior beyond resolving ambiguity, prefixed onto its source
+// label because PosePrior.msg has no field for it: "seed+" lets the prior seed a hypothesis
+// where the cloud proposed nothing, "endface+" lets its yaw anchor a box behind a cluster
+// that is only a block's end face. The real label follows. Keep in step with
+// prior_capabilities.hpp in concrete_block_detector, which strips them in this order. 331
+constexpr char kSeedCapability[] = "seed+";
+constexpr char kEndFaceCapability[] = "endface+";
+
 int64_t stampNanoseconds(const builtin_interfaces::msg::Time & stamp)
 {
   return static_cast<int64_t>(stamp.sec) * 1000000000LL +
@@ -745,22 +753,19 @@ bool PerceptionOrchestratorNode::runDetectorRefineBlock(
     // detector should prefer where the block is expected, and says nothing about the rest
     // of the scene.
     //
-    // For a block the gripper has just set down, source "fk" is load-bearing, not a label,
-    // for the same reason as in REFINE_GRASPED below: the detector only lets a prior *seed* a
-    // hypothesis when it is sourced "fk". A block in the wall row shows the sensor one end
-    // face, clusters below cluster_min_extent_xy and so proposes nothing; seeded it comes
-    // back at geometry score 0.89-0.92, unseeded there is no candidate within 0.35 m at all
-    // and the mandatory post-place refine aborts the goal (326). Only TASK_PLACED, whose
-    // pose WriteBlockPoseFromGripper wrote from FK seconds earlier -- a TASK_FREE target is
-    // the pre-descent check, where "no detection, no descent" (303) is the whole point and a
+    // A block in the wall row shows the sensor one end face, clusters below
+    // cluster_min_extent_xy and so proposes nothing (326). Both modes therefore let the
+    // prior's yaw anchor a box on that measured face -- it is a fit, not a belief.
+    // *Seeding*, which trusts the prior's position too, is only for TASK_PLACED, whose pose
+    // WriteBlockPoseFromGripper wrote from FK seconds earlier. A TASK_FREE target is the
+    // pre-descent check, where "no detection, no descent" (303) is the whole point and a
     // seed off the world model's own stale belief would defeat it.
     const bool just_placed = target.task_status == Block::TASK_PLACED;
     std::vector<PosePrior> priors{
-      just_placed ?
-      makePosePrior("fk", target.pose, kFkSeedPriorWeight) :
       makePosePrior(
+        (just_placed ? std::string(kSeedCapability) : std::string()) + kEndFaceCapability +
         "registered_block:" + target_block_id, target.pose,
-        scene_discovery_registered_prior_weight_)};
+        just_placed ? kFkSeedPriorWeight : scene_discovery_registered_prior_weight_)};
 
     DiscoverBlocksSrv::Response::SharedPtr detector_response;
     if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {
@@ -861,9 +866,8 @@ bool PerceptionOrchestratorNode::runDetectorRefineGrasped(
     }
 
     // Where FK believes the carried block is: the TCP, times the offset captured at the pick.
-    // Source "fk" is load-bearing, not a label: the detector only lets a prior *seed* a
-    // hypothesis when it is sourced "fk", and a block hanging in the gripper is exactly the
-    // case the point cloud alone does not propose.
+    // Seed capability is load-bearing here, not decoration: a block hanging in the gripper is
+    // exactly the case the point cloud alone does not propose.
     const Eigen::Matrix4d T_tcp_block = resolveGraspOffset(target_block_id);
     Eigen::Matrix4d T_world_tcp = Eigen::Matrix4d::Identity();
     std::string reason;
@@ -873,7 +877,8 @@ bool PerceptionOrchestratorNode::runDetectorRefineGrasped(
 
     std::vector<PosePrior> priors{
       makePosePrior(
-        "fk", cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block), kFkSeedPriorWeight)};
+        std::string(kSeedCapability) + "fk",
+        cbpwm::poseFromGraspOffset(T_world_tcp, T_tcp_block), kFkSeedPriorWeight)};
 
     DiscoverBlocksSrv::Response::SharedPtr detector_response;
     if (!callDetectorDiscoverBlocks(timeout_s, std::move(priors), detector_response, response)) {

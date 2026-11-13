@@ -115,9 +115,9 @@ private:
   // its id, task status and assembly goal.
   bool runDetectorRefineBlock(
     const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response);
-  // Re-measure the block in the gripper. Sends its FK pose as the single "fk"-sourced prior --
-  // the only prior source the detector lets seed a hypothesis where geometry proposes none --
-  // and folds the matching detection back into the block's grasp offset.
+  // Re-measure the block in the gripper. Sends its FK pose as the single prior, marked as
+  // allowed to seed a hypothesis where geometry proposes none (331), and folds the matching
+  // detection back into the block's grasp offset.
   bool runDetectorRefineGrasped(
     const std::string & target_block_id, double timeout_s, RunPoseSrv::Response & response);
   // Shared detector call for both detector flows. On failure it fills `response` with the
