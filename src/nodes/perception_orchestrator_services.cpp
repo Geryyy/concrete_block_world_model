@@ -3,6 +3,7 @@
 #include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <fstream>
@@ -557,7 +558,8 @@ bool PerceptionOrchestratorNode::callDetectorDiscoverBlocks(
     }
 
     auto request = std::make_shared<DiscoverBlocksSrv::Request>();
-    request->timeout_s = static_cast<float>(timeout_s);
+    // detector answers before we give up, so its reason reaches the operator
+    request->timeout_s = static_cast<float>(std::max(timeout_s - 1.0, 0.5 * timeout_s));
     request->priors = std::move(priors);
     auto future = discover_blocks_client_->async_send_request(request);
     if (future.wait_for(std::chrono::duration<double>(timeout_s)) != std::future_status::ready) {
