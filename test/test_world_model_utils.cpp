@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "concrete_block_world_model_interfaces/msg/block.hpp"
+#include "concrete_block_world_model/utils/block_utils.hpp"
 #include "concrete_block_world_model/utils/world_model_utils.hpp"
 #include "concrete_block_world_model/world_model/state_manager.hpp"
 
@@ -24,6 +25,23 @@ TEST(WorldModelUtils, TaskTransitionRules) {
 
   EXPECT_FALSE(cbpwm::isValidTaskTransition(Block::TASK_FREE, Block::TASK_PLACED));
   EXPECT_FALSE(cbpwm::isValidTaskTransition(Block::TASK_REMOVED, Block::TASK_FREE));
+}
+
+TEST(WorldModelUtils, LeavingTaskMoveLeavesACoarsePoseNotAPreciseGhost) {
+  // 13: an operator MOVE->FREE/PLACED kept FK's PRECISE 1.0 at the hook's last pose, and
+  // the planner picked that ghost. COARSE, not POSE_UNKNOWN -- a slot bound to this block
+  // waits on a pose.
+  Block block;
+  block.pose_status = Block::POSE_PRECISE;
+  block.confidence = 1.0f;
+  demoteCarriedPose(block);
+  EXPECT_EQ(block.pose_status, Block::POSE_COARSE);
+  EXPECT_FLOAT_EQ(block.confidence, 0.5f);
+  EXPECT_DOUBLE_EQ(block.pose_covariance[0], kCoarsePositionSigmaM * kCoarsePositionSigmaM);
+
+  block.confidence = 0.2f;  // a cap, never a promotion
+  demoteCarriedPose(block);
+  EXPECT_FLOAT_EQ(block.confidence, 0.2f);
 }
 
 TEST(WorldModelUtils, AssociationDistanceAndConfidenceGating) {

@@ -1128,6 +1128,9 @@ void PerceptionOrchestratorNode::handleSetBlockTaskStatus(
           offset(2, 3));
       } else {
         task_move_grasp_offsets_.erase(block_id);
+        if (prev_task_status == Block::TASK_MOVE) {
+          demoteCarriedPose(it->second);  // FK's PRECISE 1.0 would be a pickable ghost
+        }
       }
     }
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include "concrete_block_world_model/utils/block_utils.hpp"
 
@@ -86,6 +87,14 @@ void setDefaultPoseCovariance(Block & block)
   } else {
     setDiagonalPoseCovariance(block, kCoarsePositionSigmaM, kCoarseOrientationSigmaRad);
   }
+}
+
+
+void demoteCarriedPose(Block & block)
+{
+  block.pose_status = Block::POSE_COARSE;
+  block.confidence = std::min(block.confidence, 0.5f);  // cap; FK's 1.0 was not measured
+  setDefaultPoseCovariance(block);
 }
 
 

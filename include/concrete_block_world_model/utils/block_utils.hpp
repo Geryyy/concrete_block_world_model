@@ -38,6 +38,11 @@ void setDiagonalPoseCovariance(
 // without a per-measurement estimate (seeded blocks, external upserts).
 void setDefaultPoseCovariance(concrete_block_world_model_interfaces::msg::Block & block);
 
+// A block leaving TASK_MOVE is where FK from the hook last put it, not where anything
+// measured it. Demote to COARSE so it is not pickable on that pose; never to POSE_UNKNOWN,
+// a slot waiting on this block would wait forever.
+void demoteCarriedPose(concrete_block_world_model_interfaces::msg::Block & block);
+
 double poseDistance(
   const geometry_msgs::msg::Pose & a,
   const geometry_msgs::msg::Pose & b);
