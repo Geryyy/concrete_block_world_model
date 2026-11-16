@@ -25,9 +25,9 @@ world_model_node:
         - id: container  # occupied office: 0.5 m inflated, 15 m tall so no move passes over it
           position: [-9.439, -10.650, 7.500]
           dimensions: [8.0, 5.0, 15.0]
-        - id: hedge
-          position: [-6.939, 7.850, 1.461]  # +1.0 m y lab day 2026-11-04: near face y 5.35
-          dimensions: [20.0, 5.0, 3.0]
+        # - id: hedge  # off: blocked every move near the store, operator watches the hedge
+        #   position: [-6.939, 8.150, 1.461]  # near face y 5.65
+        #   dimensions: [20.0, 5.0, 3.0]
         - id: ground
           position: [-6.939, 0.350, -0.050]  # top face at world z 0, centred on the slewing column
           dimensions: [40.0, 40.0, 0.1]
