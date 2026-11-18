@@ -1,5 +1,5 @@
 # The storage as it stands at Seibersdorf: two blocks end to end on the ground, one
-# across them on top, next to the hedge (user, 2026-11-12). The only seed with two layers --
+# bridging them on top as in wall_2_1, next to the hedge. The only seed with two layers --
 # the top block has to come off first.
 #
 # ONE source of truth for both Gazebo and the world model:
@@ -27,14 +27,9 @@
 #   ground pair end to end along x (long axes in line), pitch 0.92 -- 20 mm of gap. Not side
 #   by side along y: y is the jaws' closing direction and the paddle cannot reach between
 #   two long faces 20 mm apart (324). z 0.3 = h/2 on ground whose top face is world z 0 (world_model.yaml).
-#   top block crosswise (yaw 90), centred over the joint: 0.29 m of it bears on each.
-#   z 0.9 = 0.3 + h, which is the sim: the Gazebo block is a plain box. A seated block would
-#   also be at 0.9 -- recess 60 deep against a 50 stud, so blocks bear on their faces
-#   (wiki/concrete_block.md) -- but this one is not seated. The stud grid is a uniform 300
-#   pitch, 150 from the edges, so a block turned 90 deg engages only if it is also offset by
-#   (+-0.15, +-0.15); centred, it rests on the stud tops and the real pile's top block sits
-#   0.05 higher than this file says. Nothing models that: the sim must agree with itself, and
-#   on site these poses come from scene discovery, not from here.
+#   top block in line with them (yaw 0), wall_2_1's bridge: +0.30 x from the -x block, so
+#   0.60 m of it bears on that one and 0.31 m on the other. z 0.9 = 0.3 + h, a plain box in the
+#   sim; on site these poses come from scene discovery, not from here.
 #
 # The pile is wall_plans.yaml `wall_2_1` ("two on the ground, one bridging them") worth of
 # blocks, and its bindings are c0_b0: block_0, c0_b1: block_1, c1_b0: block_2. block_0 is the
@@ -64,8 +59,8 @@ world_model_node:
         # the ground and the two below land on it.
         - id: block_0
           frame_id: world
-          position: [-11.0, 3.3, 0.9]
-          yaw_deg: 90.0
+          position: [-11.16, 3.3, 0.9]
+          yaw_deg: 0.0
           pose_status: POSE_PRECISE
           task_status: TASK_FREE
           confidence: 1.0
