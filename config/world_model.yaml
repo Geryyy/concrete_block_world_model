@@ -23,7 +23,7 @@ world_model_node:
         #   world = (-6.939 - k0_x, 0.350 - k0_y, 1.141 + k0_z) at the recorded truck pose.
         # Re-measure them for a real site -- these are the old site's geometry.
         - id: container  # occupied office: 0.5 m inflated, 15 m tall so no move passes over it
-          position: [-9.439, -10.650, 7.500]
+          position: [-9.439, -9.650, 7.500]  # near face 1 m closer to the crane than the measured container, as margin
           dimensions: [8.0, 5.0, 15.0]
         # - id: hedge  # off: blocked every move near the store, operator watches the hedge
         #   position: [-6.939, 8.150, 1.461]  # near face y 5.65
